@@ -5,7 +5,7 @@ import pandas as pd
 import sklearn.ensemble
 
 FILE_PATH = os.path.dirname(os.path.realpath(__file__))
-
+PRECISION_THRESHOLD = 0.95
 
 def map_array_values(series, value_map):
     if series.dtype == 'object':
@@ -131,7 +131,7 @@ val_y = np.array(val_y)
 idx = 1
 
 print('Prediction: ', explainer.class_names[predict_fn(val_X[idx].reshape(1, -1))[0]])
-exp = explainer.explain_instance(val_X[idx], c.predict, threshold=0.95)
+exp = explainer.explain_instance(val_X[idx], c.predict, threshold=PRECISION_THRESHOLD)
 
 # The precision and coverage are invalid!
 print('Anchor: %s' % (' AND '.join(exp.names())))
@@ -151,13 +151,29 @@ print('Anchor true test coverage: %.4f' % (len(fit_anchor) / float(test_X.shape[
 print('Anchor true test precision: %.4f' % (np.mean(predict_fn(test_X[fit_anchor]) == predicted_class)))
 
 print("\n\nPartial anchors: \n")
-for i in range(len(exp.features())):
+explanations = []  # (precision, coverage, explanation)
+for i in range(len(exp.names())):
     print("-----" * 10)
     print(f"Partial anchor with length == {i}")
 
     a = test_X[idx][exp.features(i)]
-    print(f"Partial anchor({i}) = " + ' AND '.join(exp.names(i)))
+    explanation = ' AND '.join(exp.names(i))
+    print(f"Partial anchor({i}) = " + explanation)
 
     fit_anchor = np.where(np.all(test_X[:, exp.features(i)] == a, axis=1))[0]
-    print('Coverage: %.4f' % (len(fit_anchor) / float(test_X.shape[0])))
-    print('Precision: %.4f' % (np.mean(predict_fn(test_X[fit_anchor]) == predicted_class)))
+    coverage = (len(fit_anchor) / float(test_X.shape[0]))
+    precision = (np.mean(predict_fn(test_X[fit_anchor]) == predicted_class))
+    print('Coverage: %.4f' % coverage)
+    print('Precision: %.4f' % precision)
+    explanations.append((coverage, precision, explanation))
+explanations = pd.DataFrame(explanations, columns='coverage precision explanation'.split())
+
+if explanations.precision.max() < PRECISION_THRESHOLD:
+    print("Method has failed!")
+else:
+    explanations = explanations[explanations.precision >= PRECISION_THRESHOLD].sort_values(by="coverage", ascending=False)
+    print("-----" * 10)
+    print("True best explanation:")
+    print(f"Explanation: {explanations.iloc[0].explanation}")
+    print(f"Precision: {explanations.iloc[0].precision}")
+    print(f"Coverage: {explanations.iloc[0].coverage}")
