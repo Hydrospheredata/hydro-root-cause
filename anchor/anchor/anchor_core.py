@@ -23,15 +23,16 @@ def _normalize_tuple(x):
     return tuple(sorted(set(x)))
 
 
-def _kl_bernoulli(p, q):
+def _kl_bernoulli(p: float, q: float):
     """
-    Computes Kullback-Leibler divergence between two bernoulli distributions (univariate ?)
+    Computes Kullback-Leibler divergence between two Bernoulli distributions.
+    It is mentioned as 'd' in Kauffman&Kalyanakrishnan paper
     :param p:
     :param q:
     :return:
     """
-    p = min(0.9999999999999999, max(0.0000001, p))
-    q = min(0.9999999999999999, max(0.0000001, q))
+    p = min(0.9999999999999999, max(0.0000001, p))  # Numerical stabilization
+    q = min(0.9999999999999999, max(0.0000001, q))  # Numerical stabilization
     return p * np.log(float(p) / q) + (1 - p) * np.log(float(1 - p) / (1 - q))
 
 
@@ -63,18 +64,23 @@ def _dlow_bernoulli(p, level):
     return lm
 
 
-def _compute_beta(n_features, stage_number, delta):
+def _compute_beta_kl_lucb(number_of_arms: int, stage_number: int, delta: float):
     """
     Beta is an exploration rate in KL-LUCB algortihm.
-    :param n_features:
-    :param stage_number:
-    :param delta:
-    :return:
+    Alpha and k is chosen as an in experiments of http://proceedings.mlr.press/v30/Kaufmann13.pdf
+    Though, alpha can be any number > 1, and k can be any number if
+    k > 2e + 1 + e/(a-1) + (e+1)/(a-1)^2. If alpha and k satisfy this inequalities,
+    mistake probability will be at most delta.
+    :param number_of_arms: Number of anchors, or arms in multi-armed bandit setting
+    :param stage_number: Stage number in LUCB algorithm
+    :param delta: Mistake probability. It is the probability that chosen set of arms
+    will not be a subset of optimal arms.
+    :return: Exploration rate
     """
     alpha = 1.1
     k = 405.5
-    temp = np.log(k * n_features * (stage_number ** alpha) / delta)
-    return temp + np.log(temp)
+    temperature = np.log(k * number_of_arms * (stage_number ** alpha) / delta)
+    return temperature + np.log(temperature)
 
 
 class AnchorBaseBeam(object):
@@ -85,18 +91,20 @@ class AnchorBaseBeam(object):
     def kl_lucb(sampling_functions,
                 num_samples_evaluated,
                 anchor_precision_score,
-                epsilon,
+                tolerance,
                 delta,
                 batch_size,
                 number_of_anchors):
         """
-        KULLBACK_LEIBLER - LOWER UPPER CONFIDENCE BOUND (?)
+        KL-LUCB method is introduced in http://proceedings.mlr.press/v30/Kaufmann13.pdf
+        It is adaptive sampling pure exploration algorithm which returns a set of arms in
+        multi-armed bandit problem.
+
         TODO: Complete documentation for this method!
-        :param _:
         :param anchor_precision_score:
         :param num_samples_evaluated:
         :param sampling_functions:
-        :param epsilon: Tolerance
+        :param tolerance: Tolerance
         :param delta: Width
         :param batch_size:
         :param number_of_anchors:
@@ -119,8 +127,9 @@ class AnchorBaseBeam(object):
         stage_number = 1
 
         def update_bounds(i):
+            beta = _compute_beta_kl_lucb(n_features, i, delta)
+
             _sorted_means = np.argsort(anchor_means)
-            beta = _compute_beta(n_features, i, delta)
             best_anchors_idxs = _sorted_means[-number_of_anchors:]
             not_best_anchors_idxs = _sorted_means[:-number_of_anchors]
             for anchor_idx in not_best_anchors_idxs:
@@ -134,9 +143,9 @@ class AnchorBaseBeam(object):
             return new_upper_bound_idx, new_lower_bound_idx
 
         upper_bound_idx, lower_bound_idx = update_bounds(stage_number)
-        B = upper_bounds[upper_bound_idx] - lower_bounds[lower_bound_idx]
+        gap = upper_bounds[upper_bound_idx] - lower_bounds[lower_bound_idx]
 
-        while B > epsilon:
+        while gap > tolerance:
             stage_number += 1
 
             num_samples_evaluated[upper_bound_idx] += batch_size
@@ -150,7 +159,7 @@ class AnchorBaseBeam(object):
 
             upper_bound_idx, lower_bound_idx = update_bounds(stage_number)
 
-            B = upper_bounds[upper_bound_idx] - lower_bounds[lower_bound_idx]
+            gap = upper_bounds[upper_bound_idx] - lower_bounds[lower_bound_idx]
 
         sorted_means = np.argsort(anchor_means)
         return sorted_means[-number_of_anchors:]
