@@ -37,6 +37,7 @@ def _kl_bernoulli(p: float, q: float):
 
 
 def _dup_bernoulli(p, level):
+    # Level = beta\N_a
     # KL upper confidence bound:
     # return qM>p such that d(p,qM)=level
     lm = p
@@ -51,6 +52,7 @@ def _dup_bernoulli(p, level):
 
 
 def _dlow_bernoulli(p, level):
+    # Level = beta\N_a
     # KL lower confidence bound
     # return lM<p such that d(p,lM)=level
     um = p
@@ -132,6 +134,7 @@ class AnchorBaseBeam(object):
             _sorted_means = np.argsort(anchor_means)
             best_anchors_idxs = _sorted_means[-number_of_anchors:]
             not_best_anchors_idxs = _sorted_means[:-number_of_anchors]
+
             for anchor_idx in not_best_anchors_idxs:
                 upper_bounds[anchor_idx] = _dup_bernoulli(anchor_means[anchor_idx], beta / num_samples_evaluated[anchor_idx])
             for anchor_idx in best_anchors_idxs:
