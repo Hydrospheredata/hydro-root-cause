@@ -376,7 +376,8 @@ class AnchorTabularExplainer(object):
                 num_samples=num_samples)
 
             digitized_raw_data = self.encoder.transform(raw_data)
-            data = np.zeros((num_samples, len(mapping)), int)  # TODO: data vs raw_data (?)
+            data = np.zeros((num_samples, len(mapping)), int)  # Binary Matrix, (n x m), where m is number of predicates
+            # 1 if predicate is satisfied, 0 if predicate is not satisfied
             for i in mapping:
                 f, op, value = mapping[i]
                 if op == 'eq':

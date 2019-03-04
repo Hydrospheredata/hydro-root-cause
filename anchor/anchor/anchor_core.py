@@ -437,5 +437,4 @@ class AnchorBaseGreed(object):
         # update prec, prec_ub, prec_lb
         # A <- arg max prec(A)
         # A' <- arg max (A != A') prec_ub(A', δ)
-
         pass

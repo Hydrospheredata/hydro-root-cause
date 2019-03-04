@@ -106,7 +106,7 @@ class KullbackLeiblerLUCB(MultiArmedBanditSolver):
     and number of best arms returned as a hyperparameters.
     """
 
-    def _compute_beta_kl_lucb(self, ):
+    def _compute_exploration_rate(self, ):
         """
         Beta is an exploration rate in KL-LUCB algorithm.
         Alpha and k is chosen as an in experiments of http://proceedings.mlr.press/v30/Kaufmann13.pdf
@@ -121,13 +121,13 @@ class KullbackLeiblerLUCB(MultiArmedBanditSolver):
         temperature = np.log(k * number_of_arms * (self.iteration ** alpha) / self.delta)
         return temperature + np.log(temperature)
 
-    def _update_bounds(self, ):
-        pass
-
     def get(self, n: int, delta: float, tolerance):
         """
-        Computes best n arms in given set of arms
-        :param n:
+        Computes best n arms in a given set of arms.
+        :param tolerance: minimum distance between lowest boundary of best-n arms
+        and highest upper boundary of other arms to be achieved by an algorithm. Stopping
+        criteria for an algorithm
+        :param n: Number of arms to return
         :param delta: Mistake probability. It is the probability that chosen set of arms
         will not be a subset of optimal arms.
         """
@@ -140,23 +140,26 @@ class KullbackLeiblerLUCB(MultiArmedBanditSolver):
 
         # Compute each arms mean +- bounds
         means = np.array([arm.mean() for arm in self.arms])
-        beta = self._compute_beta_kl_lucb()
+        beta = self._compute_exploration_rate()
         upper_bounds = np.array([arm.upper_kl_bound(beta) for arm in self.arms])
         lower_bounds = np.array([arm.lower_kl_bound(beta) for arm in self.arms])
 
         best_mean = np.argsort(means)[-n:]
         not_best_mean = np.argsort(means)[:-n]
 
-        lower_bounds[not_best_mean] = 1.0
-        upper_bounds[best_mean] = 0.0
+        lower_bounds[not_best_mean] = 1.0  # make lower bounds of non-best arms equal one
+        # to determine highest upper bound only for best arms
+
+        upper_bounds[best_mean] = 0.0  # nullify upper bounds of best arms
+        # to determine highest upper bound only for non-best arms
 
         l: int = np.argmax(upper_bounds)  # l from K&K paper. The worst among best arms
         u: int = np.argmin(lower_bounds)  # u from K&K paper. The best among not best arms
 
-        highest_higher_bound_among_not_best_arms = lower_bounds[u]
-        lowest_lower_bound_among_best_arms = upper_bounds[l]
+        lowest_lower_bound_among_best_arms = lower_bounds[u]
+        highest_higher_bound_among_not_best_arms = upper_bounds[l]
 
-        gap = lowest_lower_bound_among_best_arms - highest_higher_bound_among_not_best_arms
+        gap = highest_higher_bound_among_not_best_arms - lowest_lower_bound_among_best_arms
         # print(f"After {self.iteration}-th iteration gap is {gap:.3f}") TODO add logging
 
         while gap > tolerance:
@@ -167,23 +170,26 @@ class KullbackLeiblerLUCB(MultiArmedBanditSolver):
 
             # Compute each arms mean +- bounds
             means = np.array([arm.mean() for arm in self.arms])
-            beta = self._compute_beta_kl_lucb()
+            beta = self._compute_exploration_rate()
             upper_bounds = np.array([arm.upper_kl_bound(beta) for arm in self.arms])
             lower_bounds = np.array([arm.lower_kl_bound(beta) for arm in self.arms])
 
             best_mean = np.argsort(means)[-n:]
             not_best_mean = np.argsort(means)[:-n]
 
-            lower_bounds[not_best_mean] = 1.0
-            upper_bounds[best_mean] = 0.0
+            lower_bounds[not_best_mean] = 1.0  # make lower bounds of non-best arms equal one
+            # to determine highest upper bound only for best arms
+
+            upper_bounds[best_mean] = 0.0  # nullify upper bounds of best arms
+            # to determine highest upper bound only for non-best arms
 
             l: int = np.argmax(upper_bounds)  # l from K&K paper. The worst among best arms
             u: int = np.argmin(lower_bounds)  # u from K&K paper. The best among not best arms
 
-            highest_higher_bound_among_not_best_arms = lower_bounds[u]
-            lowest_lower_bound_among_best_arms = upper_bounds[l]
+            lowest_lower_bound_among_best_arms = lower_bounds[u]
+            highest_higher_bound_among_not_best_arms = upper_bounds[l]
 
-            gap = lowest_lower_bound_among_best_arms - highest_higher_bound_among_not_best_arms
+            gap = highest_higher_bound_among_not_best_arms - lowest_lower_bound_among_best_arms
             # print(f"After {self.iteration}-th iteration gap is {gap:.3f}") TODO add logging
 
         return self.arms[best_mean]
