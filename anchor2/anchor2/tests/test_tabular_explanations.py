@@ -50,3 +50,34 @@ class TestTabularExplanations(unittest.TestCase):
         exp = TabularExplanation()
         exp.predicates = [EqualityPredicate(13.0, 1, "X"), GreaterOrEqualPredicate(-21.0, 2, "Y")]
         self.assertEqual(str(exp), "X == 13.0 AND Y >= -21.0")
+
+    def test_predicate_contradictions(self):
+        with self.subTest("<< && >>"):
+            p1 = LessPredicate(-2.0, 2, "X")
+            p2 = GreaterOrEqualPredicate(-2.0, 2, "X")
+            self.assertTrue(p1.is_contradictory_to(p2))
+
+        with self.subTest("== && !=="):
+            p1 = EqualityPredicate(-2.0, 2, "X")
+            p2 = InequalityPredicate(-2.0, 2, "X")
+            self.assertTrue(p1.is_contradictory_to(p2))
+
+        with self.subTest("== & == "):
+            p1 = EqualityPredicate(-3.0, 2, "X")
+            p2 = EqualityPredicate(-2.0, 2, "X")
+            self.assertTrue(p1.is_contradictory_to(p2))
+
+        with self.subTest("!= && !="):
+            p1 = InequalityPredicate(-2.0, 2, "X")
+            p2 = InequalityPredicate(-2.0, 2, "X")
+            self.assertFalse(p1.is_contradictory_to(p2))
+
+        with self.subTest(">= && >="):
+            p1 = GreaterOrEqualPredicate(-2.0, 2, "Theta")
+            p2 = GreaterOrEqualPredicate(-2.0, 2, "Theta")
+            self.assertFalse(p1.is_contradictory_to(p2))
+
+        with self.subTest("Different ids"):
+            p1 = GreaterOrEqualPredicate(-2.0, 2, "Theta")
+            p2 = GreaterOrEqualPredicate(-2.0, 3, "Theta")
+            self.assertFalse(p1.is_contradictory_to(p2))

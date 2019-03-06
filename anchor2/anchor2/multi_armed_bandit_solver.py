@@ -121,7 +121,7 @@ class KullbackLeiblerLUCB(MultiArmedBanditSolver):
         temperature = np.log(k * number_of_arms * (self.iteration ** alpha) / self.delta)
         return temperature + np.log(temperature)
 
-    def get(self, n: int, delta: float, tolerance):
+    def get(self, n: int, delta: float, tolerance) -> List[BernoulliArm]:
         """
         Computes best n arms in a given set of arms.
         :param tolerance: minimum distance between lowest boundary of best-n arms
