@@ -7,14 +7,14 @@ from anchor2.anchor2.tabular_explanation import TabularExplanation, \
 class TestTabularExplanations(unittest.TestCase):
 
     def test_equal(self):
-        exp1 = TabularExplanation()
+        exp1 = TabularExplanation(None, None)
         exp1.predicates = [EqualityPredicate(0.0, 1, "First Feature"), GreaterOrEqualPredicate(-2.0, 2, "Second Feature")]
-        exp2 = TabularExplanation()
+        exp2 = TabularExplanation(None, None)
         exp2.predicates = [GreaterOrEqualPredicate(-2.0, 2, "Second Feature"), EqualityPredicate(0.0, 1, "First Feature")]
         self.assertEqual(exp1, exp2)
 
     def test_notequal(self):
-        exp1, exp2 = TabularExplanation(), TabularExplanation()
+        exp1, exp2 = TabularExplanation(None, None), TabularExplanation(None, None)
         exp1.predicates = [EqualityPredicate(0.0, 1, "First Feature"), GreaterOrEqualPredicate(-2.0, 2, "Second Feature")]
         exp2.predicates = [GreaterOrEqualPredicate(-3.0, 2, "Second Feature"), EqualityPredicate(0.0, 1, "First Feature")]
         self.assertNotEqual(exp1, exp2)
@@ -47,7 +47,7 @@ class TestTabularExplanations(unittest.TestCase):
             self.assertEqual(str(p4), "Theta >= -2.0")
 
     def test_explanation_str(self):
-        exp = TabularExplanation()
+        exp = TabularExplanation(None, None)
         exp.predicates = [EqualityPredicate(13.0, 1, "X"), GreaterOrEqualPredicate(-21.0, 2, "Y")]
         self.assertEqual(str(exp), "X == 13.0 AND Y >= -21.0")
 

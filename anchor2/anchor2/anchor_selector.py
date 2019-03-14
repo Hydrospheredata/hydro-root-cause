@@ -10,7 +10,21 @@ from anchor2.anchor2.tabular_explanation import TabularExplanation, EqualityPred
 
 
 class AnchorSelectionStrategy:
-    pass
+    @staticmethod
+    def find_explanation(x,
+                         data,
+                         classifier_fn,
+                         ordinal_idx,
+                         feature_names,
+                         precision_threshold,
+                         anchor_pool_size=15,
+                         beam_size=5,
+                         batch_size=10,
+                         tolerance=0.05,
+                         delta=0.1
+                         ) -> Explanation:
+
+        pass
 
 
 class GreedyAnchorSearch(AnchorSelectionStrategy):

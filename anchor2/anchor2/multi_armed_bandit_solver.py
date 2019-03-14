@@ -4,11 +4,12 @@ import numpy as np
 
 def _kl_bernoulli(p: float, q: float):
     """
-    Computes Kullback-Leibler divergence between two Bernoulli distributions.
+    Computes Kullback-Leibler divergence between two Bernoulli distributions
+    parametrized by p and q
     It is mentioned as 'd' in Kauffman&Kalyanakrishnan paper
-    :param p:
-    :param q:
-    :return:
+    :param p: parameter of the first Bernoulli distribution
+    :param q: parameter of the second Bernoulli distribution
+    :return: Kullback-Leibler divergence between two Bernoulli distributions.
     """
     p = min(0.9999999999999999, max(0.0000001, p))  # Numerical stabilization
     q = min(0.9999999999999999, max(0.0000001, q))  # Numerical stabilization
