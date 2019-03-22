@@ -8,7 +8,9 @@ import numpy as np
 class TestKLLUCB(unittest.TestCase):
 
     def test_bernoulli(self):
-        # TODO add probabilistic property to the test
+        # FIXME add probabilistic property to the test
+        # This test is supposed to fail sometimes, since algorithm is not deterministic
+
         def bernoulli_draw(p):
             return 100, np.sum(np.random.binomial(n=100, p=p))
 

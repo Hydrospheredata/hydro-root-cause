@@ -1,5 +1,6 @@
 from typing import List
 import numpy as np
+from loguru import logger
 
 
 def _kl_bernoulli(p: float, q: float):
@@ -161,7 +162,7 @@ class KullbackLeiblerLUCB(MultiArmedBanditSolver):
         highest_higher_bound_among_not_best_arms = upper_bounds[l]
 
         gap = highest_higher_bound_among_not_best_arms - lowest_lower_bound_among_best_arms
-        # print(f"After {self.iteration}-th iteration gap is {gap:.3f}") TODO add logging
+        logger.info(f"{self.iteration}-th iteration gap is {gap:.3f}")  # TODO add logging
 
         while gap > tolerance:
             # Update iteration number, and draw samples from  l and u arms.
@@ -191,7 +192,7 @@ class KullbackLeiblerLUCB(MultiArmedBanditSolver):
             highest_higher_bound_among_not_best_arms = upper_bounds[l]
 
             gap = highest_higher_bound_among_not_best_arms - lowest_lower_bound_among_best_arms
-            # print(f"After {self.iteration}-th iteration gap is {gap:.3f}") TODO add logging
+            logger.info(f"{self.iteration}-th iteration gap is {gap:.3f}")  # TODO add logging
 
         return self.arms[best_mean]
 

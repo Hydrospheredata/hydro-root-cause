@@ -110,16 +110,39 @@ le = sklearn.preprocessing.LabelEncoder()
 target_labels = le.fit_transform(target_labels)
 class_names = list(le.classes_)
 
-train_X, rest_X, train_y, rest_y = sklearn.model_selection.train_test_split(df, target_labels, stratify=target_labels, test_size=0.5)
-val_X, test_X, val_y, test_y = sklearn.model_selection.train_test_split(rest_X, rest_y, stratify=rest_y, test_size=0.5)
+train_X, rest_X, train_y, rest_y = sklearn.model_selection.train_test_split(df, target_labels, stratify=target_labels,
+                                                                            test_size=0.5, random_state=42)
+val_X, test_X, val_y, test_y = sklearn.model_selection.train_test_split(rest_X, rest_y, stratify=rest_y,
+                                                                        test_size=0.5, random_state=42)
 
-c = sklearn.ensemble.RandomForestClassifier(n_estimators=50, n_jobs=5)
+c = sklearn.ensemble.RandomForestClassifier(n_estimators=50, n_jobs=5, random_state=42)
 c.fit(train_X, train_y)
 
 print('Train', sklearn.metrics.accuracy_score(train_y, c.predict(train_X)))
 print('Validation', sklearn.metrics.accuracy_score(val_y, c.predict(val_X)))
 
 explainer = anchor2.TabularExplainer()
-explainer.fit(c.predict, val_X, [str(i) for i in range(val_X.shape[1])], [0, 10])
+explainer.fit(val_X,
+              label_decoders=categorical_names,
+              ordinal_features_idx=[0, 10],
+              oh_encoded_categories=dict(), )
 
-explainer.explain(val_X.iloc[0], c.predict)
+print("Explanation 1: ")
+# [50  4  3  3  2  1  4  0  2  2 40  9]
+explained_x = np.array(val_X.iloc[0])
+print(f"Prediction: {class_names[c.predict(explained_x.reshape(1, -1))[0]]}")
+explanation = explainer.explain(explained_x, c.predict, threshold=PRECISION_THRESHOLD, verbose=True)
+print(explanation)
+print("Precision", explanation.precision())
+print("Coverage", explanation.coverage())
+
+print("\n\n\nExplanation 2: ")
+
+# [50  4  3  3  2  1  4  0  2  2 40  9]
+explained_x = np.array(val_X.iloc[1])
+print(f"Prediction: {class_names[c.predict(explained_x.reshape(1, -1))[0]]}")
+explanation = explainer.explain(explained_x, c.predict, threshold=PRECISION_THRESHOLD, verbose=True)
+print(explanation)
+print("Precision", explanation.precision())
+print("Coverage", explanation.coverage())
+

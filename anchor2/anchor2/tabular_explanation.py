@@ -1,32 +1,74 @@
-from typing import Generator, List
+from typing import Generator, List, Dict, Any
 
 from anchor2.anchor2.explanation import Explanation, Predicate
 import numpy as np
 
 
 class TabularExplanation(Explanation):
-    def __init__(self, x, predicate_generator: Generator):
+    def __init__(self, x, predicate_generator: Generator, feature_values: List[np.array]):
         """
+        :type predicate_generator: infinite generator of random predicates
+        :type feature_values: List of possible feature values
         :param x: The sample we try to explain
         """
         self.predicates: List[TabularPredicate] = []
         self.x = x
         self.predicate_generator = predicate_generator
+        self._coverages = []
+        self._precisions = []
+        self._feature_values = feature_values
+        self.str = None
 
     def __str__(self):
-        return " AND ".join([str(p) for p in self.predicates])
+        if self.str is None:
+            return " AND ".join([str(p) for p in self.predicates])
+        else:
+            return self.str
+
+    def precision(self):
+        if len(self._precisions) > 0:
+            return np.round(self._precisions[-1], decimals=3)
+        else:
+            return None
+
+    def coverage(self):
+        if len(self._coverages) > 0:
+            return np.round(self._coverages[-1], decimals=3)
+        else:
+            return None
 
     def increment(self, ):
         new_predicate = next(self.predicate_generator)
         is_contradictory = any([predicate.is_contradictory_to(new_predicate) for predicate in self.predicates])
         present_in_anchor = new_predicate.check_against_sample(self.x)
 
-        while new_predicate in self.predicates or is_contradictory or not present_in_anchor:
-            new_predicate = next(self.predicate_generator)
-            is_contradictory = any([predicate.is_contradictory_to(new_predicate) for predicate in self.predicates])
-            present_in_anchor = new_predicate.check_against_sample(self.x)
+        current_predicates = self.predicates.copy()
+        valid_predicate_found = False
+        while not valid_predicate_found:
+            while new_predicate in self.predicates or is_contradictory or not present_in_anchor:
+                new_predicate = next(self.predicate_generator)
+                is_contradictory = any([predicate.is_contradictory_to(new_predicate) for predicate in self.predicates])
+                present_in_anchor = new_predicate.check_against_sample(self.x)
 
-        self.predicates.append(new_predicate)
+            filtered_feature_values = []
+            for feature_id, feature_values in enumerate(self._feature_values):
+                suitable_values_masks = [np.ones((len(feature_values), 1))]
+                for predicate in filter(lambda p: p.feature_id == feature_id, current_predicates):
+                    suitable_values_masks.append(predicate.check_against_column(feature_values)[:, np.newaxis])
+                suitable_values_mask = np.all(np.concatenate(suitable_values_masks, axis=1), axis=1)
+                # TODO if suitable_values_mask are identical among predicates => we can safely delete one of them, isn't it?
+                filtered_feature_values.append(feature_values[suitable_values_mask])
+
+            if any([len(x) == 0 for x in filtered_feature_values]):
+                del current_predicates[-1]
+                print("Some feature is destroyed")
+            else:
+                self.predicates.append(new_predicate)
+                valid_predicate_found = True
+
+        self.simplify_predicates()
+
+        return self
 
     def __eq__(self, other):
         if isinstance(other, TabularExplanation):
@@ -37,8 +79,39 @@ class TabularExplanation(Explanation):
     def __hash__(self):
         return hash(tuple([hash(x) for x in self.predicates]))
 
-    def numpy_selector(self):
-        return lambda x: np.logical_and(*[p.check_against_sample(x) for p in self.predicates])
+    def numpy_selector(self, x):
+        return np.all([p.check_against_sample(x) for p in self.predicates])
+
+    def copy(self):
+        new_explanation = TabularExplanation(self.x, self.predicate_generator, self._feature_values)
+        new_explanation.predicates = self.predicates.copy()
+        return new_explanation
+
+    def simplify_predicates(self):
+        """
+        Replace two or more overlapping predicates with the single strongest one.
+        e.g. x > 3 and x > 5 => x > 5
+        :return:
+        """
+        for feature_id, feature_values in enumerate(self._feature_values):
+
+            geq_predicates = list(filter(lambda p: p.feature_id == feature_id and type(p) == GreaterOrEqualPredicate, self.predicates))
+            if len(geq_predicates) > 1:
+                strongest_predicate = max(geq_predicates, key=lambda p: p.value)
+                compressed_predicates = list(filter(lambda p: p.feature_id != feature_id or
+                                                              type(p) is LessPredicate or
+                                                              p is strongest_predicate,
+                                                    self.predicates))
+                self.predicates = compressed_predicates
+
+            less_predicates = list(filter(lambda p: p.feature_id == feature_id and type(p) == LessPredicate, self.predicates))
+            if len(less_predicates) > 1:
+                strongest_predicate = min(less_predicates, key=lambda p: p.value)
+                compressed_predicates = list(filter(lambda p: p.feature_id != feature_id or
+                                                              type(p) is GreaterOrEqualPredicate or
+                                                              p is strongest_predicate,
+                                                    self.predicates))
+                self.predicates = compressed_predicates
 
 
 class TabularPredicate(Predicate):
@@ -99,12 +172,17 @@ class EqualityPredicate(TabularPredicate):
     def check_against_column(self, x: np.array):
         return x == self.value
 
-    def is_contradictory_to(self, new_predicate: TabularPredicate) -> bool:
-        if new_predicate.feature_id == self.feature_id:
-            if type(new_predicate) is EqualityPredicate and new_predicate.value != self.value:
+    def is_contradictory_to(self, other: TabularPredicate) -> bool:
+        if other.feature_id == self.feature_id:
+            if type(other) is EqualityPredicate and other.value != self.value:
                 return True
-            if type(new_predicate) is InequalityPredicate and new_predicate.value == self.value:
+            elif type(other) is InequalityPredicate and other.value == self.value:
                 return True
+            elif type(other) is GreaterOrEqualPredicate and other.value > self.value:
+                return True
+            elif type(other) is LessPredicate and other.value < self.value:
+                return True
+
         return False
 
 
@@ -118,9 +196,9 @@ class InequalityPredicate(TabularPredicate):
     def check_against_sample(self, x: np.array):
         return x[self.feature_id] != self.value
 
-    def is_contradictory_to(self, new_predicate) -> bool:
-        if new_predicate.feature_id == self.feature_id:
-            if type(new_predicate) is EqualityPredicate and new_predicate.value == self.value:
+    def is_contradictory_to(self, other) -> bool:
+        if other.feature_id == self.feature_id:
+            if type(other) is EqualityPredicate and other.value == self.value:
                 return True
         return False
 
@@ -139,7 +217,9 @@ class GreaterOrEqualPredicate(TabularPredicate):
         if new_predicate.feature_id == self.feature_id:
             if type(new_predicate) is GreaterOrEqualPredicate and new_predicate.value < self.value:
                 return True
-            if type(new_predicate) is LessPredicate and new_predicate.value <= self.value:
+            elif type(new_predicate) is LessPredicate and new_predicate.value <= self.value:
+                return True
+            elif type(new_predicate) is EqualityPredicate and new_predicate.value < self.value:
                 return True
         return False
 
@@ -158,6 +238,9 @@ class LessPredicate(TabularPredicate):
         if new_predicate.feature_id == self.feature_id:
             if type(new_predicate) is LessPredicate and new_predicate.value > self.value:
                 return True
-            if type(new_predicate) is GreaterOrEqualPredicate and new_predicate.value >= self.value:
+            elif type(new_predicate) is GreaterOrEqualPredicate and new_predicate.value >= self.value:
                 return True
+            elif type(new_predicate) is EqualityPredicate and new_predicate.value >= self.value:
+                return True
+
         return False
