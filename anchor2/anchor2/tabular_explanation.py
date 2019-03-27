@@ -20,51 +20,65 @@ class TabularExplanation(Explanation):
         self.str = None
 
     def __str__(self):
+        # self.str is set in anchor_selector after anchor is selected as the best anchor
         if self.str is None:
             return " AND ".join([str(p) for p in self.predicates])
         else:
             return self.str
 
     def precision(self):
+        """
+        :return: precision of this anchor
+        """
         if len(self._precisions) > 0:
             return np.round(self._precisions[-1], decimals=3)
         else:
             return None
 
     def coverage(self):
+        """
+        :return: coverage of this anchor
+        """
         if len(self._coverages) > 0:
             return np.round(self._coverages[-1], decimals=3)
         else:
             return None
 
     def increment(self, ):
+        """
+        Increment this anchor by a single predicate. Incrementation is done iteratively.
+        Random predicate is added and if it does not contradict with existing predicates and
+        it exists in the explained sample it is added to the predicates list.
+        Later, predicates list is simplified, and unnecessary predicates are removed.
+        :return:
+        """
         new_predicate = next(self.predicate_generator)
         is_contradictory = any([predicate.is_contradictory_to(new_predicate) for predicate in self.predicates])
         present_in_anchor = new_predicate.check_against_sample(self.x)
 
-        current_predicates = self.predicates.copy()
-        valid_predicate_found = False
-        while not valid_predicate_found:
-            while new_predicate in self.predicates or is_contradictory or not present_in_anchor:
-                new_predicate = next(self.predicate_generator)
-                is_contradictory = any([predicate.is_contradictory_to(new_predicate) for predicate in self.predicates])
-                present_in_anchor = new_predicate.check_against_sample(self.x)
+        while new_predicate in self.predicates or is_contradictory or not present_in_anchor:
+            new_predicate = next(self.predicate_generator)
+            is_contradictory = any([predicate.is_contradictory_to(new_predicate) for predicate in self.predicates])
+            present_in_anchor = new_predicate.check_against_sample(self.x)
 
-            filtered_feature_values = []
-            for feature_id, feature_values in enumerate(self._feature_values):
-                suitable_values_masks = [np.ones((len(feature_values), 1))]
-                for predicate in filter(lambda p: p.feature_id == feature_id, current_predicates):
-                    suitable_values_masks.append(predicate.check_against_column(feature_values)[:, np.newaxis])
-                suitable_values_mask = np.all(np.concatenate(suitable_values_masks, axis=1), axis=1)
-                # TODO if suitable_values_mask are identical among predicates => we can safely delete one of them, isn't it?
-                filtered_feature_values.append(feature_values[suitable_values_mask])
+            ''' FIXME Dead code for checking whether predicate can reduce # of possible feature values to zero. But if predicate passes
+             present_in_anchor test, it automatically has at least 1 possible feature value. '''
 
-            if any([len(x) == 0 for x in filtered_feature_values]):
-                del current_predicates[-1]
-                print("Some feature is destroyed")
-            else:
-                self.predicates.append(new_predicate)
-                valid_predicate_found = True
+            # filtered_feature_values = []
+            # for feature_id, feature_values in enumerate(self._feature_values):
+            #     suitable_values_masks = [np.ones((len(feature_values), 1))]
+            #     for predicate in filter(lambda p: p.feature_id == feature_id, current_predicates):
+            #         suitable_values_masks.append(predicate.check_against_column(feature_values)[:, np.newaxis])
+            #     suitable_values_mask = np.all(np.concatenate(suitable_values_masks, axis=1), axis=1)
+            #     # TODO if suitable_values_mask are identical among predicates => we can safely delete one of them, isn't it?
+            #     filtered_feature_values.append(feature_values[suitable_values_mask])
+            #
+            # if any([len(x) == 0 for x in filtered_feature_values]):
+            #     del current_predicates[-1]
+            #     raise Exception("Some feature is destroyed")
+            # else:
+
+        self.predicates.append(new_predicate)
 
         self.simplify_predicates()
 
@@ -79,7 +93,7 @@ class TabularExplanation(Explanation):
     def __hash__(self):
         return hash(tuple([hash(x) for x in self.predicates]))
 
-    def numpy_selector(self, x):
+    def check_against_sample(self, x):
         return np.all([p.check_against_sample(x) for p in self.predicates])
 
     def copy(self):
@@ -91,10 +105,24 @@ class TabularExplanation(Explanation):
         """
         Replace two or more overlapping predicates with the single strongest one.
         e.g. x > 3 and x > 5 => x > 5
+        e.g. x = 3 and x < 10 => x = 3
         :return:
         """
         for feature_id, feature_values in enumerate(self._feature_values):
 
+            # If Equality predicate is present for this feature, remove all other predicates for this feature
+            eq_predicates = list(filter(lambda p: p.feature_id == feature_id and type(p) == EqualityPredicate, self.predicates))
+            if len(eq_predicates) == 1:
+                strongest_predicate = eq_predicates[0]
+                compressed_predicates = list(filter(lambda p: p.feature_id != feature_id or
+                                                              p is strongest_predicate,
+                                                    self.predicates))
+                self.predicates = compressed_predicates
+            elif len(eq_predicates) > 1:
+                raise Exception("Invalid predicates")
+
+            # If multiple GEQ predicates are present for this feature,
+            # remove all other predicates for this feature, but the strongest one
             geq_predicates = list(filter(lambda p: p.feature_id == feature_id and type(p) == GreaterOrEqualPredicate, self.predicates))
             if len(geq_predicates) > 1:
                 strongest_predicate = max(geq_predicates, key=lambda p: p.value)
@@ -104,6 +132,8 @@ class TabularExplanation(Explanation):
                                                     self.predicates))
                 self.predicates = compressed_predicates
 
+            # If multiple LE predicates are present for this feature,
+            # remove all other predicates for this feature, but the strongest one
             less_predicates = list(filter(lambda p: p.feature_id == feature_id and type(p) == LessPredicate, self.predicates))
             if len(less_predicates) > 1:
                 strongest_predicate = min(less_predicates, key=lambda p: p.value)
@@ -112,6 +142,39 @@ class TabularExplanation(Explanation):
                                                               p is strongest_predicate,
                                                     self.predicates))
                 self.predicates = compressed_predicates
+
+            # Fetch all inequality predicates, next fetch all geq predicates. It's guaranteed by previous code that we will fetch
+            # 0 or 1 geq predicates. If any of inequality predicates has the same value as geq, meaning geq is not geq but ge, remove
+            # both inequality predicate and geq predicate and replace them with single new geq.
+            ineq_predicates = list(filter(lambda p: p.feature_id == feature_id and type(p) == InequalityPredicate, self.predicates))
+            geq_predicates = list(filter(lambda p: p.feature_id == feature_id and type(p) == GreaterOrEqualPredicate, self.predicates))
+            if len(geq_predicates) == 1:
+                geq_value = geq_predicates[0].value
+                ineq_geq_interception = list(filter(lambda p: p.value == geq_value, ineq_predicates))
+                if len(ineq_geq_interception) > 0:
+                    compressed_predicates = list(filter(lambda p: p is not ineq_geq_interception[0] and
+                                                                  p is not geq_predicates[0],
+                                                        self.predicates))
+                    new_geq_predicate = geq_predicates[0].copy()
+                    new_geq_predicate.value += 1
+                    compressed_predicates.append(new_geq_predicate)
+                    self.predicates = compressed_predicates
+
+            # ineq_predicates = list(filter(lambda p: p.feature_id == feature_id and type(p) == InequalityPredicate, self.predicates))
+            # TODO translate ineqs into mask of feature values, and maybe there is a chance to replace it with le, ge, or eq predicate
+
+    def get_possible_feature_values(self, feature_id):
+        """
+        Filter possible feature values according to the predicates list in this explanation
+        :param feature_id:
+        :return:
+        """
+        feature_values = self._feature_values[feature_id]
+        suitable_values_masks = [np.ones((len(feature_values), 1))]
+        for predicate in filter(lambda p: p.feature_id == feature_id, self.predicates):
+            suitable_values_masks.append(predicate.check_against_column(feature_values)[:, np.newaxis])
+        suitable_values_mask = np.all(np.concatenate(suitable_values_masks, axis=1), axis=1)
+        return feature_values[suitable_values_mask]
 
 
 class TabularPredicate(Predicate):

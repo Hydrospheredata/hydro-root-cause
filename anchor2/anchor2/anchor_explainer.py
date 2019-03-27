@@ -18,17 +18,18 @@ class TabularExplainer(AnchorExplainer):
 
     def fit(self,
             data: Union[np.array, pd.DataFrame],
-            label_decoders: Dict[str, str],
+            label_decoders: Dict[str, List[str]],
             ordinal_features_idx: List[int],
             oh_encoded_categories: Dict[str, List[int]],
             feature_names: List[str] = None
             ):
         """
-        :param data:
-        :param feature_names:
-        :param label_decoders:
-        :param ordinal_features_idx:
-        :param oh_encoded_categories:
+        Fits an instance of TabularExplainer with hyperparameters
+        :param data: Union[np.array, pd.DataFrame] data which will be used for explaining samples passed
+        :param feature_names: List of feature names
+        :param label_decoders: Dictionary from feature name to list of labels used for label encoding for that feature name
+        :param ordinal_features_idx: Indices of float features
+        :param oh_encoded_categories: Dictionary of "Feature name" -> List of feature indices in data used for encoding this "feature name"
         """
         assert len(data.shape) == 2, "Data should be a matrix"
 

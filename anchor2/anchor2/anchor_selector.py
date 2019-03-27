@@ -34,15 +34,14 @@ class GreedyAnchorSearch(AnchorSelectionStrategy):
     pass
 
 
-class TabularAnchorGenerator:
+class TabularAnchorFactory:
     def __init__(self, feature_values, feature_names, ordinal_idx):
         self.feature_values = feature_values
         self.feature_names = feature_names
         self.ordinal_idx = ordinal_idx
-        self.anchor_generator = self._get_random_predicate_generator()
 
     def get_initial_explanations(self, sample, num) -> List[TabularExplanation]:
-        explanations = [TabularExplanation(sample, self.anchor_generator, self.feature_values) for _ in range(num)]
+        explanations = [TabularExplanation(sample, self._get_random_predicate_generator(), self.feature_values) for _ in range(num)]
         return [explanation.increment() for explanation in explanations]
 
     def _get_random_predicate_generator(self, ):
@@ -86,7 +85,7 @@ def compute_metrics_on_original_data(anchor, d_data, labels, target_label) -> Tu
     :return: (precision, coverage)
     """
 
-    data_with_anchor_index = np.apply_along_axis(anchor.numpy_selector, axis=1, arr=d_data)
+    data_with_anchor_index = np.apply_along_axis(anchor.check_against_sample, axis=1, arr=d_data)
     data_with_anchor = d_data[data_with_anchor_index]
     labels_with_anchor = labels[data_with_anchor_index]
 
@@ -103,14 +102,14 @@ def compute_metrics_on_original_data(anchor, d_data, labels, target_label) -> Tu
 
 def compute_reward_on_augmented_data(anchor: TabularExplanation,
                                      d_data_batch: np.array,
-                                     classifier_fn,
+                                     d_classifier_fn,
                                      target_label,
                                      ):
     """
     Creates a copy of data and alters it's rows, so all of them do satisfy anchor.
     :param anchor: Explanation, set of predicates
     :param d_data_batch: Discretized data
-    :param classifier_fn: Classifier function which maps discretized data to continuous and returns labels
+    :param d_classifier_fn: Classifier function which maps discretized data to continuous and returns labels
     :param target_label: label of the sample we try to define
     :return: Reward. Number of samples classified the same as target_label, after each sample was changed to satisfy anchor
     """
@@ -128,16 +127,16 @@ def compute_reward_on_augmented_data(anchor: TabularExplanation,
         if np.sum(feature_mask) < d_data_batch.shape[0]:
             # Values which do not satisfy predicates, are replaced with possible values
 
-            possible_values = list(set(d_data_batch[feature_mask, feature_id]))  # TODO put here a list of possible values for this column
+            possible_values = anchor.get_possible_feature_values(feature_id)
             possible_values = np.random.choice(possible_values, size=np.sum(~feature_mask), replace=True)
             data_copy[~feature_mask, feature_id] = possible_values
 
-    reward = np.sum(classifier_fn(d_data_batch) == target_label)
+    reward = np.sum(d_classifier_fn(d_data_batch) == target_label)
 
     return reward
 
 
-def compute_reward_on_batch(d_data, batch_size, anchor, classifier_fn, target_label):
+def compute_reward_on_batch(d_data, batch_size, anchor, d_classifier_fn, target_label):
     """
     Computes a classifier prediction for a subsample of data. Subsample of data is selected
     according to an anchor. If no such subsample can be acquired - data is augmented, and
@@ -146,13 +145,14 @@ def compute_reward_on_batch(d_data, batch_size, anchor, classifier_fn, target_la
     :param d_data: discretized data np.array from which batch is selected
     :param batch_size: Batch size
     :param anchor: Explanation for which reward should be computed
-    :param classifier_fn: Explained classifier function
+    :param d_classifier_fn: Explained classifier function, but for discretized domain. Basically, this is classifier_fn, applied to
+    discretizer.inverse_transform(d_data).
     :param target_label: label of explained sample
     :return: (batch_size, cumulative_reward)
     """
     subsample_indices = np.random.choice(list(range(d_data.shape[0])), size=batch_size, replace=False)
     subsampled_data = d_data[subsample_indices]
-    return batch_size, compute_reward_on_augmented_data(anchor, subsampled_data, classifier_fn, target_label)
+    return batch_size, compute_reward_on_augmented_data(anchor, subsampled_data, d_classifier_fn, target_label)
 
 
 class BeamAnchorSearch(AnchorSelectionStrategy):
@@ -163,16 +163,37 @@ class BeamAnchorSearch(AnchorSelectionStrategy):
                          d_data,
                          classifier_fn,
                          d_classifier_fn,
-                         ordinal_idx,
-                         feature_names,
-                         precision_threshold,
+                         ordinal_idx: List[int],
+                         feature_names: List[str],
+                         precision_threshold: float = 0.95,
                          anchor_pool_size=25,
                          beam_size=5,
                          batch_size=150,
                          tolerance=0.2,
                          delta=0.2
                          ) -> Explanation:
-
+        """
+        This function returns the first anchor which precision will be >= precision_threshold. Anchor selection process is an iterative
+         process - first, the pool of anchors is created, then best anchors anchors from this pool take over the whole pool by copying
+         themselves.
+        :param x: Explained sample
+        :param data: Original data
+        :param d_data: Discretized version of data
+        :param classifier_fn: Explained function
+        :param d_classifier_fn: Explained function which works on discretized domain
+        :param ordinal_idx: Indices of ordinal features
+        :param feature_names: List of feature names
+        :param precision_threshold: the minimum precision sufficient for  returning an anchor
+        :param anchor_pool_size: The # of anchors evaluated at each step of the selection process
+        :param beam_size: # of anchors selected at each step of the selection process
+        :param batch_size: # of samples evaluated at request of selector algorithm (kl-lucb)
+        :param tolerance: minimum distance between lowest boundary of best-n arms
+        and highest upper boundary of other arms to be achieved by an algorithm. Stopping
+        criteria for an algorithm
+        :param delta: Mistake probability. It is the probability that chosen set of arms
+        will not be a subset of optimal arms.
+        :return: Anchor object
+        """
         labels = classifier_fn(data)
         target_label = classifier_fn(x.reshape(1, -1))
 
@@ -180,31 +201,42 @@ class BeamAnchorSearch(AnchorSelectionStrategy):
         for i in range(d_data.shape[1]):
             feature_values.append(np.unique(d_data[:, i]))
 
-        anchor_generator = TabularAnchorGenerator(feature_values, feature_names, ordinal_idx)
+        anchor_generator = TabularAnchorFactory(feature_values, feature_names, ordinal_idx)
         anchors: List[TabularExplanation] = anchor_generator.get_initial_explanations(x, anchor_pool_size)
 
         # metrics[:, 0] is a precision, metrics[:, 1] is a coverage
         metrics = np.array([compute_metrics_on_original_data(anchor, data, labels, target_label) for anchor in anchors])
+
+        # Compute mean precision for debugging purposes
         mean_precision, mean_coverage = np.mean(metrics, axis=0)
         logger.info(f"Mean precision == {mean_precision:.3f}")
+
         while np.all(metrics[:, 0] < precision_threshold):
             draw_fns = [partial(compute_reward_on_batch, d_data=d_data, batch_size=batch_size,
-                                anchor=a, classifier_fn=classifier_fn, target_label=target_label) for a in anchors]
+                                anchor=a, d_classifier_fn=d_classifier_fn, target_label=target_label) for a in anchors]
+
+            # Represent each anchor as a Bernoulli distribution with mean equal to anchor precision
             arms = [BernoulliArm(anchor, draw_fn) for anchor, draw_fn in zip(anchors, draw_fns)]
+
+            # Use KullbackLeiblerLUCB algorithm which selects subset of best bernoulli distributions
             arm_selector = KullbackLeiblerLUCB(arms)
             best_arms = arm_selector.get(beam_size, delta, tolerance)
 
+            # Clone best_arms to fill the whole list of anchors pool.
             # Idea - p as a function of coverage?
             best_arms_duplication_indices = np.random.choice(list(range(len(best_arms))), size=anchor_pool_size, replace=True)
 
             new_anchors = [best_arms[i].obj.copy() for i in best_arms_duplication_indices]
-            anchors.clear()
-            anchors = new_anchors
+            anchors.clear()  # Clear the old pool
+            anchors = new_anchors  # Change pool to clones of best_anchors
 
             for anchor in anchors:
-                anchor.increment()
+                anchor.increment()  # Increment each anchor in the pool by 1 predicate
 
+            # Compute precision and coverage for each anchor
             metrics = np.array([compute_metrics_on_original_data(anchor, data, labels, target_label) for anchor in anchors])
+
+            # Compute mean precision for debugging purposes
             mean_precision, mean_coverage = np.mean(metrics, axis=0)
             logger.info(f"Mean precision == {mean_precision:.3f}")
 

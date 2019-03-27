@@ -2,6 +2,7 @@ import os
 import numpy as np
 import pandas as pd
 import sklearn.ensemble
+import time
 
 from anchor2 import anchor2
 
@@ -128,21 +129,21 @@ explainer.fit(val_X,
               oh_encoded_categories=dict(), )
 
 print("Explanation 1: ")
-# [50  4  3  3  2  1  4  0  2  2 40  9]
 explained_x = np.array(val_X.iloc[0])
 print(f"Prediction: {class_names[c.predict(explained_x.reshape(1, -1))[0]]}")
-explanation = explainer.explain(explained_x, c.predict, threshold=PRECISION_THRESHOLD, verbose=True)
+time_start = time.time()
+explanation = explainer.explain(explained_x, c.predict, threshold=PRECISION_THRESHOLD, verbose=False)
 print(explanation)
 print("Precision", explanation.precision())
 print("Coverage", explanation.coverage())
+print(f"Elapsed time for first explanation is {time.time() - time_start:.2f}s")
 
 print("\n\n\nExplanation 2: ")
-
-# [50  4  3  3  2  1  4  0  2  2 40  9]
 explained_x = np.array(val_X.iloc[1])
 print(f"Prediction: {class_names[c.predict(explained_x.reshape(1, -1))[0]]}")
-explanation = explainer.explain(explained_x, c.predict, threshold=PRECISION_THRESHOLD, verbose=True)
+time_start = time.time()
+explanation = explainer.explain(explained_x, c.predict, threshold=PRECISION_THRESHOLD, verbose=False)
 print(explanation)
 print("Precision", explanation.precision())
 print("Coverage", explanation.coverage())
-
+print(f"Elapsed time for second explanation is {time.time() - time_start:.2f}s")
