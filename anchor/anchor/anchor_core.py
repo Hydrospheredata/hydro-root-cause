@@ -7,11 +7,82 @@ from typing import Dict, List, Callable, Tuple
 import numpy as np
 
 
-def matrix_subset(matrix, n_samples):
+def _matrix_subset(matrix, n_samples):
     if matrix.shape[0] == 0:
         return matrix
     n_samples = min(matrix.shape[0], n_samples)
     return matrix[np.random.choice(matrix.shape[0], n_samples, replace=False)]
+
+
+def _normalize_tuple(x):
+    """
+    Return sorted tuple without duplicate values
+    :param x: tuple to be sorted and filtered
+    :return: normalized value
+    """
+    return tuple(sorted(set(x)))
+
+
+def _kl_bernoulli(p: float, q: float):
+    """
+    Computes Kullback-Leibler divergence between two Bernoulli distributions.
+    It is mentioned as 'd' in Kauffman&Kalyanakrishnan paper
+    :param p:
+    :param q:
+    :return:
+    """
+    p = min(0.9999999999999999, max(0.0000001, p))  # Numerical stabilization
+    q = min(0.9999999999999999, max(0.0000001, q))  # Numerical stabilization
+    return p * np.log(float(p) / q) + (1 - p) * np.log(float(1 - p) / (1 - q))
+
+
+def _dup_bernoulli(p, level):
+    # Level = beta\N_a
+    # KL upper confidence bound:
+    # return qM>p such that d(p,qM)=level
+    lm = p
+    um = min(min(1, p + np.sqrt(level / 2.)), 1)
+    for j in range(1, 17):
+        qm = (um + lm) / 2.
+        if _kl_bernoulli(p, qm) > level:
+            um = qm
+        else:
+            lm = qm
+    return um
+
+
+def _dlow_bernoulli(p, level):
+    # Level = beta\N_a
+    # KL lower confidence bound
+    # return lM<p such that d(p,lM)=level
+    um = p
+    lm = max(min(1, p - np.sqrt(level / 2.)), 0)
+    for j in range(1, 17):
+        qm = (um + lm) / 2.
+        if _kl_bernoulli(p, qm) > level:
+            lm = qm
+        else:
+            um = qm
+    return lm
+
+
+def _compute_beta_kl_lucb(number_of_arms: int, stage_number: int, delta: float):
+    """
+    Beta is an exploration rate in KL-LUCB algortihm.
+    Alpha and k is chosen as an in experiments of http://proceedings.mlr.press/v30/Kaufmann13.pdf
+    Though, alpha can be any number > 1, and k can be any number if
+    k > 2e + 1 + e/(a-1) + (e+1)/(a-1)^2. If alpha and k satisfy this inequalities,
+    mistake probability will be at most delta.
+    :param number_of_arms: Number of anchors, or arms in multi-armed bandit setting
+    :param stage_number: Stage number in LUCB algorithm
+    :param delta: Mistake probability. It is the probability that chosen set of arms
+    will not be a subset of optimal arms.
+    :return: Exploration rate
+    """
+    alpha = 1.1
+    k = 405.5
+    temperature = np.log(k * number_of_arms * (stage_number ** alpha) / delta)
+    return temperature + np.log(temperature)
 
 
 class AnchorBaseBeam(object):
@@ -19,119 +90,86 @@ class AnchorBaseBeam(object):
         pass
 
     @staticmethod
-    def kl_bernoulli(p, q):
+    def kl_lucb(sampling_functions,
+                num_samples_evaluated,
+                anchor_precision_score,
+                tolerance,
+                delta,
+                batch_size,
+                number_of_anchors):
         """
-        Computes Kullback-Leibler divergence between two bernoulli distributions (univariate ?)
-        :param p:
-        :param q:
-        :return:
-        """
-        p = min(0.9999999999999999, max(0.0000001, p))
-        q = min(0.9999999999999999, max(0.0000001, q))
-        return p * np.log(float(p) / q) + (1 - p) * np.log(float(1 - p) / (1 - q))
+        KL-LUCB method is introduced in http://proceedings.mlr.press/v30/Kaufmann13.pdf
+        It is adaptive sampling pure exploration algorithm which returns a set of arms in
+        multi-armed bandit problem.
 
-    @staticmethod
-    def dup_bernoulli(p, level):
-        lm = p
-        um = min(min(1, p + np.sqrt(level / 2.)), 1)
-        for j in range(1, 17):
-            qm = (um + lm) / 2.
-            if AnchorBaseBeam.kl_bernoulli(p, qm) > level:
-                um = qm
-            else:
-                lm = qm
-        return um
-
-    @staticmethod
-    def dlow_bernoulli(p, level):
-        um = p
-        lm = max(min(1, p - np.sqrt(level / 2.)), 0)
-        for j in range(1, 17):
-            qm = (um + lm) / 2.
-            if AnchorBaseBeam.kl_bernoulli(p, qm) > level:
-                lm = qm
-            else:
-                um = qm
-        return lm
-
-    @staticmethod
-    def compute_beta(n_features, t, delta):
-        alpha = 1.1
-        k = 405.5
-        temp = np.log(k * n_features * (t ** alpha) / delta)
-        return temp + np.log(temp)
-
-    @staticmethod
-    def lucb(sample_fns, initial_stats, epsilon, delta, batch_size, top_n,
-             verbose=False, verbose_every=1):
-        """
         TODO: Complete documentation for this method!
-        :param sample_fns:
-        :param initial_stats:
-        :param epsilon:
-        :param delta:
+        :param anchor_precision_score:
+        :param num_samples_evaluated:
+        :param sampling_functions:
+        :param tolerance: Tolerance
+        :param delta: Width
         :param batch_size:
-        :param top_n:
-        :param verbose:
-        :param verbose_every:
+        :param number_of_anchors:
         :return:
         """
-        # initial_stats must have n_samples, positive
-        n_features = len(sample_fns)
-        n_samples = np.array(initial_stats['n_samples'])
-        positives = np.array(initial_stats['positives'])
-        ub = np.zeros(n_samples.shape)
-        lb = np.zeros(n_samples.shape)
-        for f in np.where(n_samples == 0)[0]:
-            n_samples[f] += 1
-            positives[f] += sample_fns[f](1)
-        if n_features == top_n:
+        n_features = len(sampling_functions)
+
+        anchor_precision_score = np.array(anchor_precision_score)
+        num_samples_evaluated = np.array(num_samples_evaluated)
+
+        upper_bounds = np.zeros_like(num_samples_evaluated)
+        lower_bounds = np.zeros_like(num_samples_evaluated)
+
+        for f in np.where(num_samples_evaluated == 0)[0]:
+            num_samples_evaluated[f] += 1
+            anchor_precision_score[f] += sampling_functions[f](1)
+        if n_features == number_of_anchors:
             return range(n_features)
-        means = positives / n_samples
-        t = 1
+        anchor_means = anchor_precision_score / num_samples_evaluated
+        stage_number = 1
 
-        def update_bounds(t):
-            sorted_means = np.argsort(means)
-            beta = AnchorBaseBeam.compute_beta(n_features, t, delta)
-            J = sorted_means[-top_n:]
-            not_J = sorted_means[:-top_n]
-            for f in not_J:
-                ub[f] = AnchorBaseBeam.dup_bernoulli(means[f], beta /
-                                                     n_samples[f])
-            for f in J:
-                lb[f] = AnchorBaseBeam.dlow_bernoulli(means[f],
-                                                      beta / n_samples[f])
-            ut = not_J[np.argmax(ub[not_J])]
-            lt = J[np.argmin(lb[J])]
-            return ut, lt
+        def update_bounds(i):
+            beta = _compute_beta_kl_lucb(n_features, i, delta)
 
-        ut, lt = update_bounds(t)
-        B = ub[ut] - lb[lt]
-        verbose_count = 0
-        while B > epsilon:
-            verbose_count += 1
-            if verbose and verbose_count % verbose_every == 0:
-                print('Best: %d (mean:%.10f, n: %d, lb:%.4f)' %
-                      (lt, means[lt], n_samples[lt], lb[lt]), end=' ')
-                print('Worst: %d (mean:%.4f, n: %d, ub:%.4f)' %
-                      (ut, means[ut], n_samples[ut], ub[ut]), end=' ')
-                print('B = %.2f' % B)
-            n_samples[ut] += batch_size
-            positives[ut] += sample_fns[ut](batch_size)
-            means[ut] = positives[ut] / n_samples[ut]
-            n_samples[lt] += batch_size
-            positives[lt] += sample_fns[lt](batch_size)
-            means[lt] = positives[lt] / n_samples[lt]
-            t += 1
-            ut, lt = update_bounds(t)
-            B = ub[ut] - lb[lt]
-        sorted_means = np.argsort(means)
-        return sorted_means[-top_n:]
+            _sorted_means = np.argsort(anchor_means)
+            best_anchors_idxs = _sorted_means[-number_of_anchors:]
+            not_best_anchors_idxs = _sorted_means[:-number_of_anchors]
+
+            for anchor_idx in not_best_anchors_idxs:
+                upper_bounds[anchor_idx] = _dup_bernoulli(anchor_means[anchor_idx], beta / num_samples_evaluated[anchor_idx])
+            for anchor_idx in best_anchors_idxs:
+                lower_bounds[anchor_idx] = _dlow_bernoulli(anchor_means[anchor_idx], beta / num_samples_evaluated[anchor_idx])
+
+            new_upper_bound_idx = not_best_anchors_idxs[np.argmax(upper_bounds[not_best_anchors_idxs])]
+            new_lower_bound_idx = best_anchors_idxs[np.argmin(lower_bounds[best_anchors_idxs])]
+
+            return new_upper_bound_idx, new_lower_bound_idx
+
+        upper_bound_idx, lower_bound_idx = update_bounds(stage_number)
+        gap = upper_bounds[upper_bound_idx] - lower_bounds[lower_bound_idx]
+
+        while gap > tolerance:
+            stage_number += 1
+
+            num_samples_evaluated[upper_bound_idx] += batch_size
+            num_samples_evaluated[lower_bound_idx] += batch_size
+
+            anchor_precision_score[upper_bound_idx] += sampling_functions[upper_bound_idx](batch_size)
+            anchor_precision_score[lower_bound_idx] += sampling_functions[lower_bound_idx](batch_size)
+
+            anchor_means[upper_bound_idx] = anchor_precision_score[upper_bound_idx] / num_samples_evaluated[upper_bound_idx]
+            anchor_means[lower_bound_idx] = anchor_precision_score[lower_bound_idx] / num_samples_evaluated[lower_bound_idx]
+
+            upper_bound_idx, lower_bound_idx = update_bounds(stage_number)
+
+            gap = upper_bounds[upper_bound_idx] - lower_bounds[lower_bound_idx]
+
+        sorted_means = np.argsort(anchor_means)
+        return sorted_means[-number_of_anchors:]
 
     @staticmethod
     def make_tuples(previous_best, state):
         # alters state, computes support for new tuples
-        normalize_tuple = lambda x: tuple(sorted(set(x)))  # noqa
         all_features = range(state['n_features'])
         coverage_data = state['coverage_data']
         current_idx = state['current_idx']
@@ -156,7 +194,7 @@ class AnchorBaseBeam(object):
         new_tuples = set()
         for f in all_features:
             for t in previous_best:
-                new_t = normalize_tuple(t + (f,))
+                new_t = _normalize_tuple(t + (f,))
                 if len(new_t) != len(t) + 1:
                     continue
                 if new_t not in new_tuples:
@@ -180,11 +218,11 @@ class AnchorBaseBeam(object):
         return list(new_tuples)
 
     @staticmethod
-    def get_sample_fns(sample_fn,  # : Callable[[List[Tuple[int]], int], TODO: Add return value],
-                       tuples: List[Tuple[int]],
-                       state) -> List[Callable[[int, List[int]], float]]:
+    def get_sampling_fns(sample_fn,  # : Callable[[List[Tuple[int]], int], TODO: Add return value],
+                         tuples: List[Tuple[int]],
+                         state) -> List[Callable[[int, List[int]], float]]:
         # each sample fn returns number of positives
-        sample_fns = []
+        sampling_fns = []
 
         def complete_sample_fn(t: Tuple[int], n: int) -> float:
             # TODO add pyDoc
@@ -205,16 +243,12 @@ class AnchorBaseBeam(object):
                 state['raw_data'] = np.vstack(
                     (state['raw_data'], np.zeros((prealloc_size, raw_data.shape[1]), raw_data.dtype)))
                 state['labels'] = np.hstack((state['labels'], np.zeros(prealloc_size, labels.dtype)))
-            # This can be really slow TODO: Why it is commented?
-            # state['data'] = _np.vstack((state['data'], data))
-            # state['raw_data'] = _np.vstack((state['raw_data'], raw_data))
-            # state['labels'] = _np.hstack((state['labels'], labels))
 
             return labels.sum()
 
         for t in tuples:
-            sample_fns.append(lambda n, t=t: complete_sample_fn(t, n))
-        return sample_fns
+            sampling_fns.append(lambda n, t=t: complete_sample_fn(t, n))
+        return sampling_fns
 
     @staticmethod
     def get_initial_statistics(tuples, state: Dict):
@@ -237,20 +271,17 @@ class AnchorBaseBeam(object):
     def get_anchor_from_tuple(t, state):
         # TODO: (Author) This is wrong, some of the intermediate anchors may not exist. (WTF, dude (?))
 
-        anchor = dict(feature=[], mean=[], precision=[], coverage=[], examples=[], all_precision=0,
+        anchor = dict(feature=[],
+                      mean=[],
+                      precision=[],
+                      coverage=[],
+                      examples=[],
+                      all_precision=0,
                       num_preds=state['data'].shape[0])
-
-        def normalize_tuple(x):
-            """
-            Return sorted tuple without duplicate values
-            :param x: tuple to be sorted and filtered
-            :return: normalized value
-            """
-            return tuple(sorted(set(x)))
 
         current_t = tuple()
         for f in state['t_order'][t]:
-            current_t = normalize_tuple(current_t + (f,))
+            current_t = _normalize_tuple(current_t + (f,))
 
             mean = (state['t_positives'][current_t] / state['t_nsamples'][current_t])
             anchor['feature'].append(f)
@@ -262,9 +293,9 @@ class AnchorBaseBeam(object):
             covered_true = (state['raw_data'][raw_idx][state['labels'][raw_idx] == 1])
             covered_false = (state['raw_data'][raw_idx][state['labels'][raw_idx] == 0])
 
-            exs = {'covered': matrix_subset(raw_data, 10),
-                   'covered_true': matrix_subset(covered_true, 10),
-                   'covered_false': matrix_subset(covered_false, 10),
+            exs = {'covered': _matrix_subset(raw_data, 10),
+                   'covered_true': _matrix_subset(covered_true, 10),
+                   'covered_false': _matrix_subset(covered_false, 10),
                    'uncovered_true': np.array([]),
                    'uncovered_false': np.array([])}
 
@@ -272,10 +303,11 @@ class AnchorBaseBeam(object):
         return anchor
 
     @staticmethod
-    def anchor_beam(sample_fn, delta=0.05, epsilon=0.1, batch_size=10,
+    def anchor_beam(sample_fn, delta=0.05,
+                    epsilon=0.1, batch_size=10,
                     min_shared_samples=0, desired_confidence=1, beam_size=1,
-                    verbose=False, tolerance=0.05, min_samples_start=0,
-                    max_anchor_size=None, verbose_every=1,
+                    tolerance=0.05, min_samples_start=0,
+                    max_anchor_size=None,
                     stop_on_first=False, coverage_samples=10000):
 
         anchor = dict(feature=[], mean=[], precision=[], coverage=[], examples=[], all_precision=0)
@@ -284,14 +316,14 @@ class AnchorBaseBeam(object):
         raw_data, data, labels = sample_fn([], max(1, min_samples_start))
         mean = labels.mean()
         beta = np.log(1. / delta)
-        lower_bound = AnchorBaseBeam.dlow_bernoulli(mean, beta / data.shape[0])
+        lower_bound = _dlow_bernoulli(mean, beta / data.shape[0])
         while mean > desired_confidence and lower_bound < desired_confidence - epsilon:
             nraw_data, ndata, nlabels = sample_fn([], batch_size)
             data = np.vstack((data, ndata))
             raw_data = np.vstack((raw_data, nraw_data))
             labels = np.hstack((labels, nlabels))
             mean = labels.mean()
-            lower_bound = AnchorBaseBeam.dlow_bernoulli(mean, beta / data.shape[0])
+            lower_bound = _dlow_bernoulli(mean, beta / data.shape[0])
         if lower_bound > desired_confidence:
             anchor['num_preds'] = data.shape[0]
             anchor['all_precision'] = mean
@@ -332,17 +364,14 @@ class AnchorBaseBeam(object):
                       if state['t_coverage'][x] > best_coverage]
             if len(tuples) == 0:
                 break
-            sample_fns = AnchorBaseBeam.get_sample_fns(sample_fn, tuples,
-                                                       state)
+            sample_fns = AnchorBaseBeam.get_sampling_fns(sample_fn, tuples,
+                                                         state)
             initial_stats = AnchorBaseBeam.get_initial_statistics(tuples,
                                                                   state)
-            chosen_tuples = AnchorBaseBeam.lucb(
-                sample_fns, initial_stats, epsilon, delta, batch_size,
-                min(beam_size, len(tuples)),
-                verbose=verbose, verbose_every=verbose_every)
+            chosen_tuples = AnchorBaseBeam.kl_lucb(sample_fns, initial_stats['n_samples'], initial_stats['positives'],
+                                                   epsilon, delta, batch_size, min(beam_size, len(tuples)))
+
             best_of_size[current_size] = [tuples[x] for x in chosen_tuples]
-            if verbose:
-                print('Best of size ', current_size, ':')
             stop_this = False
             for i, t in zip(chosen_tuples, best_of_size[current_size]):
                 # I can choose at most (beam_size - 1) tuples at each step,
@@ -350,24 +379,17 @@ class AnchorBaseBeam(object):
                 beta = np.log(1. /
                               (delta / (1 + (beam_size - 1) * n_features)))
                 mean = state['t_positives'][t] / state['t_nsamples'][t]
-                lower_bound = AnchorBaseBeam.dlow_bernoulli(mean, beta / state['t_nsamples'][t])
-                upper_bound = AnchorBaseBeam.dup_bernoulli(mean, beta / state['t_nsamples'][t])
+                lower_bound = _dlow_bernoulli(mean, beta / state['t_nsamples'][t])
+                upper_bound = _dup_bernoulli(mean, beta / state['t_nsamples'][t])
                 coverage = state['t_coverage'][t]
-                if verbose:
-                    print(i, mean, lower_bound, upper_bound)
                 while ((mean >= desired_confidence and lower_bound < desired_confidence - tolerance) or
                        (mean < desired_confidence and upper_bound >= desired_confidence + tolerance)):
                     sample_fns[i](batch_size)
                     mean = state['t_positives'][t] / state['t_nsamples'][t]
-                    lower_bound = AnchorBaseBeam.dlow_bernoulli(mean, beta / state['t_nsamples'][t])
-                    upper_bound = AnchorBaseBeam.dup_bernoulli(mean, beta / state['t_nsamples'][t])
-                if verbose:
-                    print('%s mean = %.2f lower_bound = %.2f upper_bound = %.2f coverage: %.2f n: %d' % (
-                        t, mean, lower_bound, upper_bound, coverage, state['t_nsamples'][t]))
+                    lower_bound = _dlow_bernoulli(mean, beta / state['t_nsamples'][t])
+                    upper_bound = _dup_bernoulli(mean, beta / state['t_nsamples'][t])
+
                 if mean >= desired_confidence and lower_bound > desired_confidence - tolerance:
-                    if verbose:
-                        print('Found eligible anchor ', t, 'Coverage:',
-                              coverage, 'Is best?', coverage > best_coverage)
                     if coverage > best_coverage:
                         best_coverage = coverage
                         best_tuple = t
@@ -379,15 +401,40 @@ class AnchorBaseBeam(object):
         if best_tuple == ():
             # Could not find an anchor, will now choose the highest precision
             # amongst the top K from every round
-            if verbose:
-                print('Could not find an anchor, now doing best of each size')
             tuples = []
             for i in range(0, current_size):
                 tuples.extend(best_of_size[i])
-            sample_fns = AnchorBaseBeam.get_sample_fns(sample_fn, tuples, state)
+            sample_fns = AnchorBaseBeam.get_sampling_fns(sample_fn, tuples, state)
             initial_stats = AnchorBaseBeam.get_initial_statistics(tuples, state)
-            chosen_tuples = AnchorBaseBeam.lucb(sample_fns, initial_stats, epsilon, delta, batch_size, 1,
-                                                verbose=verbose)
+            chosen_tuples = AnchorBaseBeam.kl_lucb(sample_fns, initial_stats['n_samples'], initial_stats['positives'],
+                                                   epsilon, delta, batch_size, 1)
             best_tuple = tuples[chosen_tuples[0]]
 
         return AnchorBaseBeam.get_anchor_from_tuple(best_tuple, state)
+
+
+class AnchorBaseGreed(object):
+    def __init__(self, epsilon, sigma, precision_threshold):
+        self.epsilon = epsilon
+        self.sigma = sigma
+        self.precision_threshold = precision_threshold
+
+        self.current_anchor = []
+
+        pass
+
+    def generate_candidates(self, anchor, predicate_generator, coverage_threshold):
+        # A_r = set()
+        # append anchor with one new predicate which is not present inanchor
+        pass
+
+    def greedy_best_candidate(self, ):  # A, D, epsilon, δ):
+        # init prec, prec_lb, prec_ub,
+        # A <- arg max prec(A)
+        # A' <- arg max (A != A') prec_ub(A', δ)
+        # while prec_ub(A') - prec_lb(A) > epsilon:
+        # sample z~ D(z|A), z' ~ D(z'|A')
+        # update prec, prec_ub, prec_lb
+        # A <- arg max prec(A)
+        # A' <- arg max (A != A') prec_ub(A', δ)
+        pass

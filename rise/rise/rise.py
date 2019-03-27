@@ -14,7 +14,7 @@ class RiseImageExplainer:
     def fit(self,
             prediction_fn: Callable[[np.array], Sequence[T]],
             input_size: Tuple[int, int],
-            class_names: Dict[T, str],
+            class_names: Dict[T, str],  # TODO use this param in fit and explain
             number_of_masks: int = 1000,
             mask_granularity: int = 7,
             mask_density: float = 0.5) -> 'RiseImageExplainer':

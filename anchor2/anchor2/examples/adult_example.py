@@ -1,11 +1,14 @@
 import os
-import anchor
 import numpy as np
 import pandas as pd
 import sklearn.ensemble
+import time
+
+from anchor2 import anchor2
 
 FILE_PATH = os.path.dirname(os.path.realpath(__file__))
 PRECISION_THRESHOLD = 0.95
+
 
 def map_array_values(series, value_map):
     if series.dtype == 'object':
@@ -88,7 +91,7 @@ transformations = {
     'Country': lambda x: map_array_values(x, country_map),
 }
 
-df = pd.read_csv(os.path.join(FILE_PATH, "../data/adult/adult.data"), header=None)
+df = pd.read_csv(os.path.join(FILE_PATH, "data/adult/adult.data"), header=None)
 df.columns = feature_names
 target_labels = pd.Series(df.iloc[:, -1], index=df.index)
 df = df.iloc[:, features_to_use]
@@ -108,72 +111,39 @@ le = sklearn.preprocessing.LabelEncoder()
 target_labels = le.fit_transform(target_labels)
 class_names = list(le.classes_)
 
-train_X, rest_X, train_y, rest_y = sklearn.model_selection.train_test_split(df, target_labels, stratify=target_labels, test_size=0.5)
-val_X, test_X, val_y, test_y = sklearn.model_selection.train_test_split(rest_X, rest_y, stratify=rest_y, test_size=0.5)
+train_X, rest_X, train_y, rest_y = sklearn.model_selection.train_test_split(df, target_labels, stratify=target_labels,
+                                                                            test_size=0.5, random_state=42)
+val_X, test_X, val_y, test_y = sklearn.model_selection.train_test_split(rest_X, rest_y, stratify=rest_y,
+                                                                        test_size=0.5, random_state=42)
 
-c = sklearn.ensemble.RandomForestClassifier(n_estimators=50, n_jobs=5)
+c = sklearn.ensemble.RandomForestClassifier(n_estimators=50, n_jobs=5, random_state=42)
 c.fit(train_X, train_y)
-predict_fn = lambda x: c.predict(x)
-print('Train', sklearn.metrics.accuracy_score(train_y, predict_fn(train_X)))
-print('Validation', sklearn.metrics.accuracy_score(val_y, predict_fn(val_X)))
 
-explainer = anchor.AnchorTabularExplainer()
-explainer.fit(data=val_X,
-              target=val_y,
-              categorical_features_idx=categorical_features_idx,
-              categorical_names=categorical_names,
-              class_names=class_names,
-              balance=True)
+print('Train', sklearn.metrics.accuracy_score(train_y, c.predict(train_X)))
+print('Validation', sklearn.metrics.accuracy_score(val_y, c.predict(val_X)))
 
-val_X = np.array(val_X)
-val_y = np.array(val_y)
+explainer = anchor2.TabularExplainer()
+explainer.fit(val_X,
+              label_decoders=categorical_names,
+              ordinal_features_idx=[0, 10],
+              oh_encoded_categories=dict(), )
 
-idx = 1
+print("Explanation 1: ")
+explained_x = np.array(val_X.iloc[0])
+print(f"Prediction: {class_names[c.predict(explained_x.reshape(1, -1))[0]]}")
+time_start = time.time()
+explanation = explainer.explain(explained_x, c.predict, threshold=PRECISION_THRESHOLD, verbose=False)
+print(explanation)
+print("Precision", explanation.precision())
+print("Coverage", explanation.coverage())
+print(f"Elapsed time for first explanation is {time.time() - time_start:.2f}s")
 
-print('Prediction: ', explainer.class_names[predict_fn(val_X[idx].reshape(1, -1))[0]])
-exp = explainer.explain_instance(val_X[idx], c.predict, threshold=PRECISION_THRESHOLD)
-
-# The precision and coverage are invalid!
-print('Anchor: %s' % (' AND '.join(exp.names())))
-print('Precision: %.2f' % exp.precision())  # Invalid!
-print('Coverage: %.2f' % exp.coverage())  # Invalid!
-
-test_X = np.array(test_X)
-test_y = np.array(test_y)
-
-predicted_class = predict_fn(test_X[idx].reshape(1, -1))
-a = test_X[idx][exp.features()]
-
-# fit_anchor is indices of samples which have satisfied the anchor
-fit_anchor = np.where(np.all(test_X[:, exp.features()] == a, axis=1))[0]
-
-print('Anchor true test coverage: %.4f' % (len(fit_anchor) / float(test_X.shape[0])))
-print('Anchor true test precision: %.4f' % (np.mean(predict_fn(test_X[fit_anchor]) == predicted_class)))
-
-print("\n\nPartial anchors: \n")
-explanations = []  # (precision, coverage, explanation)
-for i in range(len(exp.names())):
-    print("-----" * 10)
-    print(f"Partial anchor with length == {i}")
-
-    a = test_X[idx][exp.features(i)]
-    explanation = ' AND '.join(exp.names(i))
-    print(f"Partial anchor({i}) = " + explanation)
-
-    fit_anchor = np.where(np.all(test_X[:, exp.features(i)] == a, axis=1))[0]
-    coverage = (len(fit_anchor) / float(test_X.shape[0]))
-    precision = (np.mean(predict_fn(test_X[fit_anchor]) == predicted_class))
-    print('Coverage: %.4f' % coverage)
-    print('Precision: %.4f' % precision)
-    explanations.append((coverage, precision, explanation))
-explanations = pd.DataFrame(explanations, columns='coverage precision explanation'.split())
-
-if explanations.precision.max() < PRECISION_THRESHOLD:
-    print("Method has failed!")
-else:
-    explanations = explanations[explanations.precision >= PRECISION_THRESHOLD].sort_values(by="coverage", ascending=False)
-    print("-----" * 10)
-    print("True best explanation:")
-    print(f"Explanation: {explanations.iloc[0].explanation}")
-    print(f"Precision: {explanations.iloc[0].precision}")
-    print(f"Coverage: {explanations.iloc[0].coverage}")
+print("\n\n\nExplanation 2: ")
+explained_x = np.array(val_X.iloc[1])
+print(f"Prediction: {class_names[c.predict(explained_x.reshape(1, -1))[0]]}")
+time_start = time.time()
+explanation = explainer.explain(explained_x, c.predict, threshold=PRECISION_THRESHOLD, verbose=False)
+print(explanation)
+print("Precision", explanation.precision())
+print("Coverage", explanation.coverage())
+print(f"Elapsed time for second explanation is {time.time() - time_start:.2f}s")

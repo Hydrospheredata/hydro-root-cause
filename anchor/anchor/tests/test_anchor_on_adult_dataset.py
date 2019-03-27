@@ -8,8 +8,10 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import LabelEncoder
 import unittest
 import os
+import timeout_decorator
 
 FILE_PATH = os.path.dirname(os.path.realpath(__file__))
+
 
 class TestAnchorOnAdultDataset(TestCase):
 
@@ -146,6 +148,14 @@ class TestAnchorOnAdultDataset(TestCase):
             exp = self.explainer.explain_instance(x, self.predict_fn, threshold=0.95)
             with self.subTest(i=i, msg="Non-empty feature name in explanation"):
                 self.assertTrue(all([len(name) > 0 for name in exp.names()]), "Each feature name should not be empty string")
+
+    # @timeout_decorator.timeout(60, use_signals=False)
+    @unittest.skip("Debug")
+    def test_explanation_time(self):
+        x_idx = np.random.choice(list(range(self.val_X.shape[0])), 5, replace=False)
+        x = self.val_X[x_idx]
+        _ = self.explainer.explain_instance(x, self.predict_fn, threshold=0.95)
+        pass
 
     @unittest.skip("https://github.com/provectus/hydro-root-cause/issues/1")
     def test_explanation_metrics(self):

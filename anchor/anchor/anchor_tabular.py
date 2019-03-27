@@ -169,7 +169,6 @@ class AnchorTabularExplainer(object):
         data = self.data
         digitized_data = self.d_data
 
-
         # Subsample data with replacement
         subsample_idx = np.random.choice(range(data.shape[0]), num_samples, replace=True)
         subsampled_data = data[subsample_idx]
@@ -325,7 +324,7 @@ class AnchorTabularExplainer(object):
         out += u'</body></html>'
         return out
 
-    def get_sample_fn(self, data_row, classifier_fn, desired_label=None):
+    def get_sample_fn(self, explained_sample, classifier_fn, desired_label=None):
         # TODO: add pyDoc
 
         def predict_fn(x):
@@ -333,23 +332,22 @@ class AnchorTabularExplainer(object):
 
         true_label = desired_label
         if true_label is None:
-            true_label = predict_fn(data_row.reshape(1, -1))[0]
+            true_label = predict_fn(explained_sample.reshape(1, -1))[0]
         # Must map present here to include categorical features (for conditions_eq), and numerical features for geq
         # and leq
         mapping: Dict[int, Tuple[int, str, Num]] = {}
-        data_row = self.encoder.transform(data_row.reshape(1, -1))[0]  # TODO: why so, it is already digitized (??
-        # print(type(data_row))
+        explained_sample = self.encoder.transform(explained_sample.reshape(1, -1))[0]  # TODO: why so, it is already digitized (??
         for feature_idx in self.categorical_features_idx:  # Categorical features are all_features_idx now!
             if feature_idx in self.ordinal_features_idx:
                 for v in range(len(self.categorical_names[feature_idx])):
                     idx = len(mapping)
-                    if data_row[feature_idx] <= v != len(self.categorical_names[feature_idx]) - 1:
+                    if explained_sample[feature_idx] <= v != len(self.categorical_names[feature_idx]) - 1:
                         mapping[idx] = (feature_idx, 'leq', v)
-                    elif data_row[feature_idx] > v:
+                    elif explained_sample[feature_idx] > v:
                         mapping[idx] = (feature_idx, 'geq', v)
             else:
                 idx = len(mapping)
-                mapping[idx] = (feature_idx, 'eq', data_row[feature_idx])
+                mapping[idx] = (feature_idx, 'eq', explained_sample[feature_idx])
 
         def sample_fn(present: List[int], num_samples: int, compute_labels: bool = True):
             # TODO: add pydoc, change this 'currying' to functools.partial
@@ -378,11 +376,12 @@ class AnchorTabularExplainer(object):
                 num_samples=num_samples)
 
             digitized_raw_data = self.encoder.transform(raw_data)
-            data = np.zeros((num_samples, len(mapping)), int)  # TODO: data vs raw_data (?)
+            data = np.zeros((num_samples, len(mapping)), int)  # Binary Matrix, (n x m), where m is number of predicates
+            # 1 if predicate is satisfied, 0 if predicate is not satisfied
             for i in mapping:
                 f, op, value = mapping[i]
                 if op == 'eq':
-                    data[:, i] = (digitized_raw_data[:, f] == data_row[f]).astype(int)
+                    data[:, i] = (digitized_raw_data[:, f] == explained_sample[f]).astype(int)
                 if op == 'leq':
                     data[:, i] = (digitized_raw_data[:, f] <= value).astype(int)
                 if op == 'geq':
@@ -396,7 +395,7 @@ class AnchorTabularExplainer(object):
 
     # TODO: pass beam_size argument to inner function calls
     def explain_instance(self,
-                         data_row,
+                         explained_sample,
                          classifier_fn,
                          threshold=0.95,
                          delta=0.1,
@@ -404,30 +403,34 @@ class AnchorTabularExplainer(object):
                          batch_size=100,
                          max_anchor_size=None,
                          desired_label=None,
-                         beam_size=4,
+                         beam_size=4,  # FIXME pass beam_size to the
                          **kwargs):
         # It's possible to pass in max_anchor_size
-        sample_fn, mapping = self.get_sample_fn(
-            data_row, classifier_fn, desired_label=desired_label)
+        sample_fn, mapping = self.get_sample_fn(explained_sample, classifier_fn, desired_label=desired_label)
         # return sample_fn, mapping
         exp = anchor_core.AnchorBaseBeam.anchor_beam(
-            sample_fn, delta=delta, epsilon=tau, batch_size=batch_size,
-            desired_confidence=threshold, max_anchor_size=max_anchor_size,
+            sample_fn,
+            delta=delta,
+            epsilon=tau,
+            batch_size=batch_size,
+            desired_confidence=threshold,
+            max_anchor_size=max_anchor_size,
             **kwargs)
-        self.add_names_to_exp(data_row, exp, mapping)
-        exp['instance'] = data_row
-        exp['prediction'] = classifier_fn(data_row.reshape(1, -1))[0]
+
+        self.add_names_to_exp(explained_sample, exp, mapping)
+        exp['instance'] = explained_sample
+        exp['prediction'] = classifier_fn(explained_sample.reshape(1, -1))[0]
         explanation = anchor_explanation.AnchorExplanation('tabular', exp, self.as_html)
         return explanation
 
-    def add_names_to_exp(self, data_row, hoeffding_exp, mapping):
+    def add_names_to_exp(self, _, hoeffding_exp, mapping):
         # TODO: (Author todo) precision recall is all wrong, coverage functions wont work anymore due to ranges
         # TODO: (mine) what the fuck, dude?
-        idxs = hoeffding_exp['feature']
+        indexes = hoeffding_exp['feature']
         hoeffding_exp['names'] = []
-        hoeffding_exp['feature'] = [mapping[idx][0] for idx in idxs]
+        hoeffding_exp['feature'] = [mapping[idx][0] for idx in indexes]
         ordinal_ranges: Dict[int, List[float]] = {}  # Feature_idx -> range of values it should be
-        for idx in idxs:
+        for idx in indexes:
             f, op, v = mapping[idx]  # feature_id_old, operation, value
             if op == 'geq' or op == 'leq':
                 if f not in ordinal_ranges:
@@ -438,7 +441,7 @@ class AnchorTabularExplainer(object):
                 ordinal_ranges[f][1] = min(ordinal_ranges[f][1], v)
         handled: Set = set()  # TODO: What is handled?
         # print(list(ordinal_ranges.items()))  # Working fine here
-        for idx in idxs:
+        for idx in indexes:
             f, op, v = mapping[idx]
             if op == 'eq':
                 feature_name = '%s = ' % self.feature_names[f]

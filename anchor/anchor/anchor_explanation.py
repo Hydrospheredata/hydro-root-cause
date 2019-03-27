@@ -40,7 +40,7 @@ class AnchorExplanation:
         Returns the anchor precision (a float)
         Args:
             partial_index (int): lets you get the anchor precision until a
-            certain index. For example, if the anchor has precisions
+            certain index. For example, if the anchor has _precisions
             [0.1, 0.5, 0.95] and partial_index=1, this will return 0.5
         """
         precision = self.exp_map['precision']
@@ -56,7 +56,7 @@ class AnchorExplanation:
         Returns the anchor coverage (a float)
         Args:
             partial_index (int): lets you get the anchor coverage until a
-            certain index. For example, if the anchor has coverages
+            certain index. For example, if the anchor has _coverages
             [0.1, 0.5, 0.95] and partial_index=1, this will return 0.5
         """
         coverage = self.exp_map['coverage']
