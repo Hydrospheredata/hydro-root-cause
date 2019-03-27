@@ -108,6 +108,9 @@ class KullbackLeiblerLUCB(MultiArmedBanditSolver):
     and number of best arms returned as a hyperparameters.
     """
 
+    def __init__(self, arms: List[BernoulliArm]):
+        self.arms = np.array(arms)
+
     def _compute_exploration_rate(self, ):
         """
         Beta is an exploration rate in KL-LUCB algorithm.
@@ -196,5 +199,4 @@ class KullbackLeiblerLUCB(MultiArmedBanditSolver):
 
         return self.arms[best_mean]
 
-    def __init__(self, arms: List[BernoulliArm]):
-        self.arms = np.array(arms)
+
