@@ -1,5 +1,5 @@
 from typing import Generator, List, Dict, Any
-
+from abc import ABC, abstractmethod
 from anchor2.anchor2.explanation import Explanation, Predicate
 import numpy as np
 
@@ -200,29 +200,32 @@ class TabularPredicate(Predicate):
     def __hash__(self):
         return hash((self.value, self.feature_id))
 
+    @abstractmethod
     def check_against_sample(self, x: np.array):
         """
         Returns True, if predicate holds for sample x, False otherwise
         :param x:
         :return:
         """
-        raise NotImplementedError()
+        pass
 
+    @abstractmethod
     def check_against_column(self, x: np.array):
         """
         Returns True, if predicate holds for every element of x, False otherwise
         :param x:
         :return:
         """
-        raise NotImplementedError()
+        pass
 
-    def is_contradictory_to(self, new_predicate) -> bool:
+    @abstractmethod
+    def is_contradictory_to(self, other) -> bool:
         """
         Returns True if two predicates contradict with each other, False otherwise
-        :param new_predicate:
+        :param other:
         :return:
         """
-        raise NotImplementedError()
+        pass
 
 
 class EqualityPredicate(TabularPredicate):
@@ -245,7 +248,6 @@ class EqualityPredicate(TabularPredicate):
                 return True
             elif type(other) is LessPredicate and other.value < self.value:
                 return True
-
         return False
 
 
@@ -276,13 +278,13 @@ class GreaterOrEqualPredicate(TabularPredicate):
     def check_against_sample(self, x: np.array):
         return x[self.feature_id] >= self.value
 
-    def is_contradictory_to(self, new_predicate) -> bool:
-        if new_predicate.feature_id == self.feature_id:
-            if type(new_predicate) is GreaterOrEqualPredicate and new_predicate.value < self.value:
+    def is_contradictory_to(self, other) -> bool:
+        if other.feature_id == self.feature_id:
+            if type(other) is GreaterOrEqualPredicate and other.value < self.value:
                 return True
-            elif type(new_predicate) is LessPredicate and new_predicate.value <= self.value:
+            elif type(other) is LessPredicate and other.value <= self.value:
                 return True
-            elif type(new_predicate) is EqualityPredicate and new_predicate.value < self.value:
+            elif type(other) is EqualityPredicate and other.value < self.value:
                 return True
         return False
 
@@ -297,13 +299,12 @@ class LessPredicate(TabularPredicate):
     def check_against_column(self, x: np.array):
         return x <= self.value
 
-    def is_contradictory_to(self, new_predicate) -> bool:
-        if new_predicate.feature_id == self.feature_id:
-            if type(new_predicate) is LessPredicate and new_predicate.value > self.value:
+    def is_contradictory_to(self, other) -> bool:
+        if other.feature_id == self.feature_id:
+            if type(other) is LessPredicate and other.value > self.value:
                 return True
-            elif type(new_predicate) is GreaterOrEqualPredicate and new_predicate.value >= self.value:
+            elif type(other) is GreaterOrEqualPredicate and other.value >= self.value:
                 return True
-            elif type(new_predicate) is EqualityPredicate and new_predicate.value >= self.value:
+            elif type(other) is EqualityPredicate and other.value >= self.value:
                 return True
-
         return False
