@@ -4,9 +4,9 @@ from typing import Callable, Union, List, Dict
 import numpy as np
 import pandas as pd
 
-from anchor2.anchor2.anchor_selector import BeamAnchorSearch, GreedyAnchorSearch, AnchorSelectionStrategy
-from anchor2.anchor2.explanation import Explanation
-from anchor2.anchor2.utils import DiscretizerTransformer, ExplanationTranslator
+from .anchor_selector import BeamAnchorSearch, GreedyAnchorSearch, AnchorSelectionStrategy
+from .explanation import Explanation
+from .utils import DiscretizerTransformer, ExplanationTranslator
 from loguru import logger
 
 
@@ -95,4 +95,3 @@ class TabularExplainer(AnchorExplainer):
         explanation.str = translator.transform(explanation)
 
         return explanation
-

@@ -1,6 +1,6 @@
 FROM python:3.7.2-alpine3.9
 
-# TODO Fix pip modules versiongi
+# TODO Fix pip modules versioning
 RUN apk add --no-cache \
         --virtual=.build-dependencies \
         g++ gfortran file binutils \
@@ -22,15 +22,19 @@ RUN apk add --no-cache \
     \
     apk del .build-dependencies
 
-#COPY requirements.txt requirements.txt
-#RUN pip install -r requirements.txt
+
+COPY requirements.txt requirements.txt
+RUN pip install -r requirements.txt
 
 WORKDIR /app
 COPY . /app
 
-RUN pip install anchor/ && pip install rise/
+RUN pip install anchor2/ && pip install rise/
 
 EXPOSE 8080
 
-ENTRYPOINT ["python"]
-CMD ["app.py"]
+RUN export FLASK_APP=hello.py
+CMD flask run
+
+#ENTRYPOINT ["python"]
+#CMD ["app.py"]

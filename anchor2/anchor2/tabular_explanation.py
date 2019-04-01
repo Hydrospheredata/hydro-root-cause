@@ -1,6 +1,6 @@
 from typing import Generator, List, Dict, Any
 from abc import ABC, abstractmethod
-from anchor2.anchor2.explanation import Explanation, Predicate
+from .explanation import Explanation, Predicate
 import numpy as np
 
 

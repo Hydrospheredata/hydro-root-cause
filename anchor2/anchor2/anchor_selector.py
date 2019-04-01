@@ -3,9 +3,9 @@ import numpy as np
 from copy import deepcopy
 
 from functools import partial
-from anchor2.anchor2.explanation import Explanation
-from anchor2.anchor2.multi_armed_bandit_solver import BernoulliArm, KullbackLeiblerLUCB
-from anchor2.anchor2.tabular_explanation import TabularExplanation, EqualityPredicate, InequalityPredicate, GreaterOrEqualPredicate, \
+from .explanation import Explanation
+from .multi_armed_bandit_solver import BernoulliArm, KullbackLeiblerLUCB
+from .tabular_explanation import TabularExplanation, EqualityPredicate, InequalityPredicate, GreaterOrEqualPredicate, \
     LessPredicate
 from itertools import compress
 from loguru import logger

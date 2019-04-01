@@ -4,7 +4,7 @@ import numpy as np
 from sklearn.preprocessing import KBinsDiscretizer, OneHotEncoder
 from itertools import chain
 
-from anchor2.anchor2.tabular_explanation import *
+from .tabular_explanation import *
 from loguru import logger
 
 

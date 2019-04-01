@@ -3,10 +3,10 @@ from functools import partial
 import requests
 from typing import Dict, Any, List
 
-from flask import Flask, request, abort, Response, jsonify
+from flask import Flask, request, abort, jsonify
 import numpy as np
-from .anchor2.anchor2.anchor_explainer import TabularExplainer
-from .rise import rise
+import anchor2
+import rise
 import json
 import os
 
@@ -58,7 +58,7 @@ def main():
             label_decoders: Dict[int, List[str]] = dict([(int(k), v) for (k, v) in anchor_config['label_decoders'].items()])
             del anchor_config['label_decoders']
 
-            anchor_explainer = TabularExplainer()
+            anchor_explainer = anchor2.anchor2.TabularExplainer()
             data = None  # TODO Get data from reqstore
             anchor_explainer.fit(data=data, label_decoders=label_decoders, **anchor_config)
 
@@ -74,5 +74,4 @@ def main():
         abort(400, "Invalid type of input data")
 
 
-if __name__ == '__main__':
-    main()
+
