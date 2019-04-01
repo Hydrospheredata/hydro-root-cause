@@ -33,4 +33,4 @@ RUN pip install anchor/ && pip install rise/
 EXPOSE 8080
 
 ENTRYPOINT ["python"]
-CMD ["anchor/examples/anchor_tabular_adult_dataset.py"]
+CMD ["app.py"]
