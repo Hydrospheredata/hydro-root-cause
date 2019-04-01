@@ -4,7 +4,7 @@ payload:
   - "src/"
   - "requirements.txt"
   - "random-forest-adult.joblib"
-runtime: "hydrosphere/serving-runtime-python-3.7:0.1.2-rc0"
+runtime: "hydrosphere/serving-runtime-python-3.6:0.1.2-rc0"
 install-command: "pip install -r requirements.txt"
 contract:
   name: "predict"
@@ -28,6 +28,9 @@ contract:
       shape: [-1, 1]
       type: int64
     "Race":
+      shape: [-1, 1]
+      type: int64
+    "Sex":
       shape: [-1, 1]
       type: int64
     "Capital Gain":

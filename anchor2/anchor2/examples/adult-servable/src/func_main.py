@@ -23,6 +23,6 @@ def predict(**kwargs):
         int64_val=predicted.flatten().tolist(),
         dtype=hs.DT_INT64,
         tensor_shape=hs.TensorShapeProto(
-            dim=[hs.TensorShapeProto.Dim(size=item) for item in predicted.shape]))
+            dim=[hs.TensorShapeProto.Dim(size=-1), hs.TensorShapeProto.Dim(size=1)]))
     
     return hs.PredictResponse(outputs={"Prediction": response})
