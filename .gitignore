@@ -300,3 +300,6 @@ $RECYCLE.BIN/
 *.lnk
 
 # End of https://www.gitignore.io/api/data,macos,python,windows,pycharm+all,jupyternotebook,jupyternotebooks
+
+# Remove servables' metadata
+/**/.hs
