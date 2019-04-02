@@ -12,13 +12,13 @@ import os
 
 app = Flask(__name__)
 
-host_address = os.environ.get("CLUSTER_ADDRESS", "http://localhost")
-application_name = os.environ.get("APPLICATION_NAME", "mnist-app")
+host_address = os.environ.get("CLUSTER_ADDRESS", "https://dev.k8s.hydrosphere.io")
+application_name = os.environ.get("APPLICATION_NAME", "adult-salary-app")
 signature_name = os.environ.get("SIGNATURE_NAME", "predict")
 service_link = f"{host_address}/gateway/applications/{application_name}/{signature_name}"
 
 
-def hydro_serving_classifier_call(x: np.array, json_tag="imgs"):
+def hydro_serving_classifier_call(x: np.array, json_tag="samples"):
     response = requests.post(url=service_link, json={json_tag: [x.tolist()]})
     predicted_probas = np.array(response.json()["class_ids"][0])
     return predicted_probas.argmax()
