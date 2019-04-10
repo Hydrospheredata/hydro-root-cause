@@ -7,6 +7,7 @@ import pandas as pd
 from .anchor_selector import BeamAnchorSearch, GreedyAnchorSearch, AnchorSelectionStrategy
 from .explanation import Explanation
 from .utils import DiscretizerTransformer, ExplanationTranslator
+from .tabular_explanation import TabularExplanation
 from loguru import logger
 
 
@@ -64,7 +65,7 @@ class TabularExplainer(AnchorExplainer):
         self.label_decoders = label_decoders
         self.translators = self.discretizer.map_translators(label_decoders, self.feature_names)
 
-    def explain(self, x: np.array, classifier_fn, strategy: str = "kl-lucb", threshold=0.95, verbose=False):
+    def explain(self, x: np.array, classifier_fn, strategy: str = "kl-lucb", threshold=0.95, verbose=False) -> TabularExplanation:
 
         logger.disable("anchor2.anchor2")
 
@@ -81,7 +82,7 @@ class TabularExplainer(AnchorExplainer):
         else:
             raise ValueError("Strategy is not recognized, possible options are ['greedy', 'kl-lucb']")
 
-        explanation: Explanation = selector.find_explanation(x=x,
+        explanation: TabularExplanation = selector.find_explanation(x=x,
                                                              data=self.data,
                                                              d_data=self.discretized_data,
                                                              classifier_fn=classifier_fn,

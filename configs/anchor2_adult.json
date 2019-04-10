@@ -1,5 +1,6 @@
 {
   "precision_threshold": 0.95,
+  "verbose": true,
   "ordinal_features_idx": [
     0,
     10

@@ -3,7 +3,6 @@ from typing import Dict, Tuple, Callable, TypeVar, Sequence
 import numpy as np
 from skimage.transform import resize
 
-
 T = TypeVar('T')  # The result type of prediction_fn
 
 
@@ -17,9 +16,11 @@ class RiseImageExplainer:
             class_names: Dict[T, str],  # TODO use this param in fit and explain
             number_of_masks: int = 1000,
             mask_granularity: int = 7,
-            mask_density: float = 0.5) -> 'RiseImageExplainer':
+            mask_density: float = 0.5,
+            single_channel=False) -> 'RiseImageExplainer':
         """
 
+        :param single_channel: For B&W images
         :return: Explainer with paramters stored inside
         :rtype: RiseImageExplainer
         :param prediction_fn: function which takes np.array with shape (batch_size, input_size[0], input_size[1], 3)
@@ -46,7 +47,8 @@ class RiseImageExplainer:
         self.mask_density = mask_density
         self.input_size = input_size
         self.prediction_fn = prediction_fn
-        self.masks = self._generate_masks()  # Is it valid to store the same masks for everything
+        self.single_channel = single_channel
+        self.masks = self._generate_masks()  # Is it valid to store the same masks for everything?
 
         return self
 
@@ -70,22 +72,30 @@ class RiseImageExplainer:
             y = np.random.randint(0, cell_size[1])
             # Linear upsampling and cropping
             masks[i, :, :] = resize(grid[i], up_size, order=1, mode='reflect', )[x:x + self.input_size[0], y:y + self.input_size[1]]
-        masks = masks.reshape(-1, *self.input_size, 1)
+
+        if self.single_channel:
+            masks = masks.reshape(-1, *self.input_size)
+        else:
+            masks = masks.reshape(-1, *self.input_size, 1)
+
         return masks
 
-    def explain(self, x, batch_size=100) -> np.array:
+    def explain(self, x, batch_size=20) -> np.array:
         """
         Multiply x by different masks and look at the prediction results.
+        :param batch_size:
         :param x: Image represented as an np.array of shape (input_size[0], input_size[1], 3)
         :return: Array which contains sailency maps for each class. [Class_id -> Saliency map]
         """
-        batch_size = 100
         predictions = []
         # Make sure multiplication is being done for correct axes
+        print(x.shape, self.masks.shape)
         masked = x * self.masks
         for i in range(0, self.number_of_masks, batch_size):
             # TODO check for situation then self.number_of_masks%batch_size!=0
-            predictions.append(self.prediction_fn(masked[i:min(i + batch_size, self.number_of_masks)]))
+            print(i)
+            masked_x = masked[i:min(i + batch_size, self.number_of_masks)]
+            predictions.append(self.prediction_fn(masked_x))
         predictions = np.concatenate(predictions)
         saliency_map = predictions.T.dot(self.masks.reshape(self.number_of_masks, -1)).reshape(-1, *self.input_size)
         saliency_map = saliency_map / self.number_of_masks / self.mask_density

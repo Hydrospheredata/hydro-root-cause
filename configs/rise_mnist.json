@@ -1,6 +1,6 @@
 {
-  "number_of_masks": 1000,
-  "mask_granularity": 7,
+  "number_of_masks": 100,
+  "mask_granularity": 3,
   "mask_density": 0.5,
   "input_size": [
     28,

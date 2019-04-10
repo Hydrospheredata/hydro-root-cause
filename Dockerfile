@@ -31,10 +31,7 @@ COPY . /app
 
 RUN pip install anchor2/ && pip install rise/
 
-EXPOSE 8080
+EXPOSE 5000
 
-RUN export FLASK_APP=hello.py
-CMD flask run
-
-#ENTRYPOINT ["python"]
-#CMD ["app.py"]
+ENTRYPOINT ["python"]
+CMD ["app.py"]
