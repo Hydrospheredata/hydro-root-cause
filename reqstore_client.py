@@ -95,7 +95,8 @@ class BinaryHelper:
         data = BytesIO(bio.read())
 
         if offset == 2:
-            return BinaryHelper.read_message(bio, hs.ExecutionError())
+            return BinaryHelper.read_message(bio, hs.monitoring.ExecutionError())
+
         elif offset == 3:
             return BinaryHelper.read_message(data, hs.PredictResponse())
         raise UnicodeDecodeError
