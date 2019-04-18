@@ -125,6 +125,9 @@ class DiscretizerTransformer:
 
             restored_data[:, feature_idxs] = oh_encoded_category.toarray()
 
+        for feature_idx in self.columns2copy:
+            restored_data[:, feature_idx] = discretized_data[:, self._feature_mapping[feature_idx]]
+
         return restored_data
 
     def map_translators(self, label_decoders, feature_names):
