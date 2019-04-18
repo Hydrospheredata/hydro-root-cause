@@ -1,4 +1,5 @@
 import json
+import time
 from typing import Dict, List
 
 import numpy as np
@@ -7,6 +8,8 @@ import requests
 import rise
 from flask import Flask, request, jsonify
 from functools import reduce, partial
+
+from hydro_serving_grpc.timemachine import ReqstoreClient
 
 from anchor2.anchor2 import TabularExplainer
 
@@ -39,34 +42,31 @@ def make_columnar_json(sample, feature_names):
     return output_json
 
 
-def get_data_from_reqstore(application_id, reqstore_url="https://dev.k8s.hydrosphere.io/reqstore/"):
-    binary_data = APIHelper.download_all(reqstore_url, application_id)
-    records = BinaryHelper.decode_records(binary_data)
-
-    all_entries = reduce(list.__add__, map(lambda r: r.entries, records))
-    reqstore_requests = map(lambda r: r.request, all_entries)
-
-    # TODO Fix processing of requests which has resulted in error
-    # Helper functions to translate requests into pd.Series
+def get_data_from_reqstore(application_id, reqstore_url="dev.k8s.hydrosphere.io:443"):
     def request_to_df(r):
         columns = []
         values = []
         for key, value in r.inputs.items():
             columns.append(key)
-            if len(value.int64_val) == 0:
-                values.append([np.NAN])  # FIXME why this field is missing?
-            else:
-                values.append(value.int64_val)
+            values.append(value.int64_val)
         return pd.DataFrame(columns=columns, data=np.array(values).T)
 
-    x = list(map(request_to_df, reqstore_requests))
-    x = pd.concat(x, sort=False)
+    client = ReqstoreClient(reqstore_url, False)
+    end_time = round(time.time() * 1000000000)
+    data = client.getRange(0, end_time, application_id)
+    data = list(data)
+
+    rs = list(map(lambda x: x.entries[0].request, data))
+    rs = [request_to_df(r) for r in rs]
+
+    df = pd.concat(rs, sort=False)
 
     # Remove [1, 1, 1, ...] which results from UI test model calls
-    x = x.loc[~np.all(x == np.array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]), axis=1)]
-    x.dropna(inplace=True)
-    x.drop_duplicates(inplace=True)
-    return x
+    df = df.loc[~np.all(df == np.array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]), axis=1)]
+    df.dropna(inplace=True)
+    df.drop_duplicates(inplace=True)
+
+    return df
 
 
 def get_application_id(application_name: str):
@@ -93,7 +93,8 @@ def anchor():
     # TODO verify input json
     application_id = get_application_id(inp_json['application_name'])
     anchor_config = inp_json['config']
-    data = get_data_from_reqstore(application_id)
+    data = get_data_from_reqstore(str(application_id))
+    print("DATA SHAPE ", data.shape)
 
     label_decoders: Dict[int, List[str]] = dict([(int(k), v) for (k, v) in anchor_config['label_decoders'].items()])
     oh_encoded_categories: Dict[str, List[int]] = dict(
@@ -107,11 +108,11 @@ def anchor():
                          oh_encoded_categories=oh_encoded_categories,
                          feature_names=anchor_config['feature_names'])
 
-    x = np.array(request.get_json()['sample'])
+    x = np.array(request.get_json()['explained_instance'])
 
     classifier_fn = partial(hydroserving_classifier_call,
                             feature_names=anchor_config['feature_names'],
-                            application_name=anchor_config['application_name'])
+                            application_name=inp_json['application_name'])
 
     explanation = anchor_explainer.explain(x, classifier_fn=classifier_fn)
 

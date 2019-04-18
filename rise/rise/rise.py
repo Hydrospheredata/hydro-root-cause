@@ -28,7 +28,7 @@ class RiseImageExplainer:
         :param input_size: Tuple with image width and height in pixels
         :param class_names: Mapping from class_id to class name. class_id has to be the result type of prediction_fn
         :param number_of_masks: Number of masks generated and evaluated by the explainer
-        :param mask_granularity: Parameter specifies how many cells will be in one masks. Mask is a [mask_granularity x mask_granularity]
+        :param mask_granularity: Parameter specifies how many cells will be in one masks. Mask is a [mask_granularity df mask_granularity]
         grid.
         :param mask_density: Parameter specifies how many cells will be present in the mask. More dense the matrix will be, more parts of
         the original image will be present after its multiplication with mask.
@@ -82,7 +82,7 @@ class RiseImageExplainer:
 
     def explain(self, x, batch_size=20) -> np.array:
         """
-        Multiply x by different masks and look at the prediction results.
+        Multiply df by different masks and look at the prediction results.
         :param batch_size:
         :param x: Image represented as an np.array of shape (input_size[0], input_size[1], 3)
         :return: Array which contains sailency maps for each class. [Class_id -> Saliency map]

@@ -1,12 +1,9 @@
-from urllib.parse import urljoin
 from io import BytesIO
 from itertools import chain
-from functools import reduce
+from urllib.parse import urljoin
 
-import requests
 import hydro_serving_grpc as hs
-from google.protobuf import text_encoding
-import urllib
+import requests
 
 
 class APIHelper:
@@ -16,29 +13,10 @@ class APIHelper:
         return urljoin(address, "/".join([name, path]))
 
     @staticmethod
-    def status(address, name):
-        url = APIHelper._urljoin(address, name, "status")
-        return requests.get(url).json()
-
-    @staticmethod
-    def download(address, name, from_ts, to_ts):
+    def download(address, name):
         url = APIHelper._urljoin(address, name, "get")
-        r = requests.get(url, stream=True, params={"from": from_ts, "to": to_ts})
+        r = requests.get(url, stream=True)
         return r.content
-
-    @staticmethod
-    def download_all(address, name):
-        status = APIHelper.status(address, name)
-        # TODO in case if there was only one request
-        #      instead of 'FromTo' reqstore returns range { 'Single' }
-        try:
-            rng = status['fs']['range']['FromTo']
-        except KeyError as ex:
-            raise ValueError(f"Application {name} has no available records.") from ex
-        from_ts, to_ts = rng['from'], rng['to']
-
-        print(f"Downloading requests from {name} for timestamps: {from_ts} to {to_ts}")
-        return APIHelper.download(address, name, from_ts, to_ts)
 
 
 class BinaryHelper:
@@ -144,19 +122,3 @@ class TsRecord:
 
 def join_entries(records: [TsRecord]):
     return list(chain(*[item.entries for item in records]))
-
-
-if __name__ == "__main__":
-    addr = "https://dev.k8s.hydrosphere.io:7265"
-    name = "adult-salary-app"
-
-    binary_data = APIHelper.download_all(addr, name)
-    records = BinaryHelper.decode_records(binary_data)
-
-    i = 1
-    for record in records:
-        for entry in record.entries:
-            print(entry.response)
-            i += 1
-            break
-        break

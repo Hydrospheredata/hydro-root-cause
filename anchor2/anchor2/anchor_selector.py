@@ -132,6 +132,7 @@ def compute_reward_on_augmented_data(anchor: TabularExplanation,
             data_copy[~feature_mask, feature_id] = possible_values
 
     reward = np.sum(d_classifier_fn(d_data_batch) == target_label)
+    # print("DBATCH", d_classifier_fn(d_data_batch))
 
     return reward
 
@@ -212,8 +213,13 @@ class BeamAnchorSearch(AnchorSelectionStrategy):
         logger.info(f"Mean precision == {mean_precision:.3f}")
 
         while np.all(metrics[:, 0] < precision_threshold):
-            draw_fns = [partial(compute_reward_on_batch, d_data=d_data, batch_size=batch_size,
-                                anchor=a, d_classifier_fn=d_classifier_fn, target_label=target_label) for a in anchors]
+
+            draw_fns = [partial(compute_reward_on_batch,
+                                d_data=d_data,
+                                batch_size=batch_size,
+                                anchor=a,
+                                d_classifier_fn=d_classifier_fn,
+                                target_label=target_label) for a in anchors]
 
             # Represent each anchor as a Bernoulli distribution with mean equal to anchor precision
             arms = [BernoulliArm(anchor, draw_fn) for anchor, draw_fn in zip(anchors, draw_fns)]

@@ -73,7 +73,7 @@ class TabularExplanation(Explanation):
             #     # TODO if suitable_values_mask are identical among predicates => we can safely delete one of them, isn't it?
             #     filtered_feature_values.append(feature_values[suitable_values_mask])
             #
-            # if any([len(x) == 0 for x in filtered_feature_values]):
+            # if any([len(df) == 0 for df in filtered_feature_values]):
             #     del current_predicates[-1]
             #     raise Exception("Some feature is destroyed")
             # else:
@@ -104,8 +104,8 @@ class TabularExplanation(Explanation):
     def simplify_predicates(self):
         """
         Replace two or more overlapping predicates with the single strongest one.
-        e.g. x > 3 and x > 5 => x > 5
-        e.g. x = 3 and x < 10 => x = 3
+        e.g. df > 3 and df > 5 => df > 5
+        e.g. df = 3 and df < 10 => df = 3
         :return:
         """
         for feature_id, feature_values in enumerate(self._feature_values):
@@ -203,7 +203,7 @@ class TabularPredicate(Predicate):
     @abstractmethod
     def check_against_sample(self, x: np.array):
         """
-        Returns True, if predicate holds for sample x, False otherwise
+        Returns True, if predicate holds for sample df, False otherwise
         :param x:
         :return:
         """
@@ -212,7 +212,7 @@ class TabularPredicate(Predicate):
     @abstractmethod
     def check_against_column(self, x: np.array):
         """
-        Returns True, if predicate holds for every element of x, False otherwise
+        Returns True, if predicate holds for every element of df, False otherwise
         :param x:
         :return:
         """
@@ -250,6 +250,9 @@ class EqualityPredicate(TabularPredicate):
                 return True
         return False
 
+    def copy(self):
+        return EqualityPredicate(self.value, self.feature_id, self.feature_name)
+
 
 class InequalityPredicate(TabularPredicate):
     def __str__(self):
@@ -266,6 +269,9 @@ class InequalityPredicate(TabularPredicate):
             if type(other) is EqualityPredicate and other.value == self.value:
                 return True
         return False
+
+    def copy(self):
+        return InequalityPredicate(self.value, self.feature_id, self.feature_name)
 
 
 class GreaterOrEqualPredicate(TabularPredicate):
@@ -288,6 +294,9 @@ class GreaterOrEqualPredicate(TabularPredicate):
                 return True
         return False
 
+    def copy(self):
+        return GreaterOrEqualPredicate(self.value, self.feature_id, self.feature_name)
+
 
 class LessPredicate(TabularPredicate):
     def __str__(self):
@@ -308,3 +317,6 @@ class LessPredicate(TabularPredicate):
             elif type(other) is EqualityPredicate and other.value >= self.value:
                 return True
         return False
+
+    def copy(self):
+        return LessPredicate(self.value, self.feature_id, self.feature_name)

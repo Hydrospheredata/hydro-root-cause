@@ -83,14 +83,15 @@ class TabularExplainer(AnchorExplainer):
             raise ValueError("Strategy is not recognized, possible options are ['greedy', 'kl-lucb']")
 
         explanation: TabularExplanation = selector.find_explanation(x=x,
-                                                             data=self.data,
-                                                             d_data=self.discretized_data,
-                                                             classifier_fn=classifier_fn,
-                                                             d_classifier_fn=lambda y: classifier_fn(self.discretizer.inverse_transform(y)),
-                                                             ordinal_idx=self.ordinal_features_idx,
-                                                             feature_names=self.feature_names,
-                                                             precision_threshold=threshold,
-                                                             )
+                                                                    data=self.data,
+                                                                    d_data=self.discretized_data,
+                                                                    classifier_fn=classifier_fn,
+                                                                    d_classifier_fn=lambda y: classifier_fn(
+                                                                        self.discretizer.inverse_transform(y)),
+                                                                    ordinal_idx=self.ordinal_features_idx,
+                                                                    feature_names=self.feature_names,
+                                                                    precision_threshold=threshold,
+                                                                    )
         translator = ExplanationTranslator()
         translator.fit(self.translators, self.ordinal_features_idx)
         explanation.str = translator.transform(explanation)
