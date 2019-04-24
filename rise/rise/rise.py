@@ -16,7 +16,8 @@ class RiseImageExplainer:
             number_of_masks: int = 1000,
             mask_granularity: int = 7,
             mask_density: float = 0.5,
-            single_channel=False) -> 'RiseImageExplainer':
+            single_channel=False,
+            channels_last=False) -> 'RiseImageExplainer':
         """
 
         :param single_channel: For B&W images
@@ -47,6 +48,7 @@ class RiseImageExplainer:
         self.input_size = input_size
         self.prediction_fn = prediction_fn
         self.single_channel = single_channel
+        self.channels_last = channels_last
         self.masks = self._generate_masks()  # Is it valid to store the same masks for everything?
 
         return self
@@ -75,7 +77,10 @@ class RiseImageExplainer:
         if self.single_channel:
             masks = masks.reshape(-1, *self.input_size)
         else:
-            masks = masks.reshape(-1, *self.input_size, 1)
+            if self.channels_last:
+                masks = masks.reshape(-1, *self.input_size, 1)
+            else:
+                masks = masks.reshape(-1, 1, *self.input_size)
 
         return masks
 

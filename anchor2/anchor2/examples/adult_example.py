@@ -159,21 +159,21 @@ print("Coverage", explanation.coverage())
 print(f"Elapsed time for third explanation is {time.time() - time_start:.2f}s")
 
 # Example of output
-
+#
 # Explanation 1:
 # Prediction:  <=50K
 # Marital Status == Widowed
 # Precision 0.974
 # Coverage 0.029
 # Elapsed time for first explanation is 2.35s
-
+#
 # Explanation 2:
 # Prediction:  >50K
 # Capital Gain == None AND Hours per week < 76.78787878787898 AND Capital Loss == None AND Occupation == Sales AND Race ==  White AND Workclass ==  Federal-gov
 # Precision 1.0
 # Coverage 0.0
 # Elapsed time for second explanation is 40.95s
-
+#
 # Explanation 3:
 # Prediction:  >50K
 # Age > 33.0 AND Sex ==  Male AND Relationship ==  Husband AND Hours per week < 42.0 AND Capital Gain == None AND Capital Loss == None AND Marital Status == Married AND (Age < 28.0 OR 29.0 < Age) AND Race ==  White AND Education == Bachelors AND Hours per week > 37.66666666666674 AND Occupation == Other
