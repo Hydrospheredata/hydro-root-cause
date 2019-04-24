@@ -128,32 +128,55 @@ explainer.fit(val_X,
               ordinal_features_idx=[0, 10],
               oh_encoded_categories=dict(), )
 
-# print("Explanation 1: ")
-# explained_x = np.array(val_X.iloc[0])
-# print(f"Prediction: {class_names[c.predict(explained_x.reshape(1, -1))[0]]}")
-# time_start = time.time()
-# explanation = explainer.explain(explained_x, c.predict, threshold=PRECISION_THRESHOLD, verbose=False)
-# print(explanation)
-# print("Precision", explanation.precision())
-# print("Coverage", explanation.coverage())
-# print(f"Elapsed time for first explanation is {time.time() - time_start:.2f}s")
-#
+print("Explanation 1: ")
+explained_x = np.array(val_X.iloc[0])
+print(f"Prediction: {class_names[c.predict(explained_x.reshape(1, -1))[0]]}")
+time_start = time.time()
+explanation = explainer.explain(explained_x, c.predict, threshold=PRECISION_THRESHOLD, verbose=False)
+print(explanation)
+print("Precision", explanation.precision())
+print("Coverage", explanation.coverage())
+print(f"Elapsed time for first explanation is {time.time() - time_start:.2f}s")
+
 print("\n\n\nExplanation 2: ")
 explained_x = np.array(val_X.iloc[1])
 print(f"Prediction: {class_names[c.predict(explained_x.reshape(1, -1))[0]]}")
 time_start = time.time()
-explanation = explainer.explain(explained_x, c.predict, threshold=PRECISION_THRESHOLD, verbose=True)
+explanation = explainer.explain(explained_x, c.predict, threshold=PRECISION_THRESHOLD, verbose=False)
 print(explanation)
 print("Precision", explanation.precision())
 print("Coverage", explanation.coverage())
 print(f"Elapsed time for second explanation is {time.time() - time_start:.2f}s")
 
-# print("\n\n\nExplanation 3: ")
-# explained_x = np.array([37, 4, 1, 0, 4, 0, 4, 1, 2, 2, 50, 9])
-# print(f"Prediction: {class_names[c.predict(explained_x.reshape(1, -1))[0]]}")
-# time_start = time.time()
-# explanation = explainer.explain(explained_x, c.predict, threshold=PRECISION_THRESHOLD, verbose=True)
-# print(explanation)
-# print("Precision", explanation.precision())
-# print("Coverage", explanation.coverage())
-# print(f"Elapsed time for third explanation is {time.time() - time_start:.2f}s")
+print("\n\n\nExplanation 3: ")
+explained_x = np.array([37, 4, 1, 0, 4, 0, 4, 1, 2, 2, 50, 9])
+print(f"Prediction: {class_names[c.predict(explained_x.reshape(1, -1))[0]]}")
+time_start = time.time()
+explanation = explainer.explain(explained_x, c.predict, threshold=PRECISION_THRESHOLD, verbose=False)
+print(explanation)
+print("Precision", explanation.precision())
+print("Coverage", explanation.coverage())
+print(f"Elapsed time for third explanation is {time.time() - time_start:.2f}s")
+
+# Example of output
+
+# Explanation 1:
+# Prediction:  <=50K
+# Marital Status == Widowed
+# Precision 0.974
+# Coverage 0.029
+# Elapsed time for first explanation is 2.35s
+
+# Explanation 2:
+# Prediction:  >50K
+# Capital Gain == None AND Hours per week < 76.78787878787898 AND Capital Loss == None AND Occupation == Sales AND Race ==  White AND Workclass ==  Federal-gov
+# Precision 1.0
+# Coverage 0.0
+# Elapsed time for second explanation is 40.95s
+
+# Explanation 3:
+# Prediction:  >50K
+# Age > 33.0 AND Sex ==  Male AND Relationship ==  Husband AND Hours per week < 42.0 AND Capital Gain == None AND Capital Loss == None AND Marital Status == Married AND (Age < 28.0 OR 29.0 < Age) AND Race ==  White AND Education == Bachelors AND Hours per week > 37.66666666666674 AND Occupation == Other
+# Precision 1.0
+# Coverage 0.001
+# Elapsed time for third explanation is 132.92s

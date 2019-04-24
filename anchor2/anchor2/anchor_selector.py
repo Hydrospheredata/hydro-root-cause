@@ -126,14 +126,14 @@ def compute_reward_on_augmented_data(anchor: TabularExplanation,
 
         if np.sum(feature_mask) < d_data_batch.shape[0]:
             # Values which do not satisfy predicates, are replaced with possible values
-
             possible_values = anchor.get_possible_feature_values(feature_id)
+
+            # FIXME This line can throw ValueError: possible_values must be non-empty
             possible_values = np.random.choice(possible_values, size=np.sum(~feature_mask), replace=True)
+
             data_copy[~feature_mask, feature_id] = possible_values
 
     reward = np.sum(d_classifier_fn(d_data_batch) == target_label)
-    # print("DBATCH", d_classifier_fn(d_data_batch))
-
     return reward
 
 
@@ -170,7 +170,7 @@ class BeamAnchorSearch(AnchorSelectionStrategy):
                          anchor_pool_size=25,
                          beam_size=5,
                          batch_size=150,
-                         tolerance=0.2,
+                         tolerance=0.3,
                          delta=0.2
                          ) -> Explanation:
         """

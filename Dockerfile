@@ -1,35 +1,23 @@
-FROM python:3.7.2-alpine3.9
+FROM python:3.6.8-slim-stretch
 
-# TODO Fix pip modules versioning
-RUN apk add --no-cache \
-        --virtual=.build-dependencies \
-        g++ gfortran file binutils \
-        musl-dev python3-dev openblas-dev && \
-    apk add libstdc++ openblas && \
-    \
-    ln -s locale.h /usr/include/xlocale.h && \
-    \
-    pip install numpy && \
-    pip install pandas && \
-    pip install scipy && \
-    pip install scikit-learn && \
-    \
-    rm -r /root/.cache && \
-    find /usr/lib/python3.*/ -name 'tests' -exec rm -r '{}' + && \
-    find /usr/lib/python3.*/site-packages/ -name '*.so' -print -exec sh -c 'file "{}" | grep -q "not stripped" && strip -s "{}"' \; && \
-    \
-    rm /usr/include/xlocale.h && \
-    \
-    apk del .build-dependencies
+RUN apt-get update && apt-get upgrade -y
 
+RUN apt-get install -y build-essential python3-numpy python3-scipy \
+                     libatlas-dev libatlas3-base
+
+RUN  update-alternatives --set libblas.so.3 \
+    /usr/lib/atlas-base/atlas/libblas.so.3 && \
+    update-alternatives --set liblapack.so.3 \
+    /usr/lib/atlas-base/atlas/liblapack.so.3
+
+RUN apt-get install -y python-matplotlib
+RUN apt-get install -y python3-pip
 
 COPY requirements.txt requirements.txt
-RUN pip install -r requirements.txt
+RUN pip3 install -r requirements.txt
 
 WORKDIR /app
 COPY . /app
-
-RUN pip install anchor2/ && pip install rise/
 
 EXPOSE 5000
 

@@ -1,26 +1,17 @@
-import json
 import time
+from functools import partial
 from typing import Dict, List
 
 import numpy as np
 import pandas as pd
 import requests
-import rise
 from flask import Flask, request, jsonify
-from functools import reduce, partial
-
 from hydro_serving_grpc.timemachine import ReqstoreClient
 
 from anchor2.anchor2 import TabularExplainer
-
-from reqstore_client import APIHelper, BinaryHelper
-
-from app_adult import adult_api
-from app_mnist import mnist_api
+from rise.rise import RiseImageExplainer
 
 app = Flask(__name__)
-app.register_blueprint(adult_api)
-app.register_blueprint(mnist_api)
 
 
 @app.route("/")
@@ -133,23 +124,22 @@ def is_valid_rise_config(rise_config):
 
 
 @app.route("/rise", methods=['POST'])
-def rise_mnist():
+def rise():
     inp_json = request.get_json()
     rise_config = inp_json['config']
     # TODO check config
 
-    rise_explainer = rise.RiseImageExplainer()
+    rise_explainer = RiseImageExplainer()
 
     prediction_fn = partial(hydroserving_image_classifier_call,
                             application_name=rise_config['application_name'])
 
     rise_explainer.fit(prediction_fn=prediction_fn,
                        input_size=rise_config['input_size'],
-                       class_names=dict([(int(k), v) for (k, v) in rise_config['class_names'].items()]),
                        number_of_masks=rise_config['number_of_masks'],
                        mask_granularity=rise_config['mask_granularity'],
                        mask_density=rise_config['mask_density'],
-                       single_channel=True)
+                       single_channel=rise_config['single_channel'])
 
     image = request.get_json()['image']
     image = np.array(image)

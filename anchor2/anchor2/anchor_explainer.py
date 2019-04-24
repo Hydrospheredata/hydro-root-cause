@@ -82,6 +82,7 @@ class TabularExplainer(AnchorExplainer):
         else:
             raise ValueError("Strategy is not recognized, possible options are ['greedy', 'kl-lucb']")
 
+        # TODO Pass KL-LUCB parameters
         explanation: TabularExplanation = selector.find_explanation(x=x,
                                                                     data=self.data,
                                                                     d_data=self.discretized_data,
