@@ -2,6 +2,7 @@ from typing import Dict, Tuple, Callable, TypeVar, Sequence
 
 import numpy as np
 from skimage.transform import resize
+from tqdm import tqdm
 
 T = TypeVar('T')  # The result type of prediction_fn
 
@@ -20,6 +21,7 @@ class RiseImageExplainer:
             channels_last=False) -> 'RiseImageExplainer':
         """
 
+        :param channels_last:
         :param single_channel: For B&W images
         :return: Explainer with paramters stored inside
         :rtype: RiseImageExplainer
@@ -49,7 +51,7 @@ class RiseImageExplainer:
         self.prediction_fn = prediction_fn
         self.single_channel = single_channel
         self.channels_last = channels_last
-        self.masks = self._generate_masks()  # Is it valid to store the same masks for everything?
+        self.masks = self._generate_masks()
 
         return self
 
@@ -93,11 +95,8 @@ class RiseImageExplainer:
         """
         predictions = []
         # Make sure multiplication is being done for correct axes
-        print(x.shape, self.masks.shape)
         masked = x * self.masks
-        for i in range(0, self.number_of_masks, batch_size):
-            # TODO check for situation then self.number_of_masks%batch_size!=0
-            print(i)
+        for i in tqdm(range(0, self.number_of_masks, batch_size)):
             masked_x = masked[i:min(i + batch_size, self.number_of_masks)]
             predictions.append(self.prediction_fn(masked_x))
         predictions = np.concatenate(predictions)
