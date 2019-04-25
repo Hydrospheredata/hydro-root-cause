@@ -10,6 +10,7 @@ from hydro_serving_grpc.timemachine import ReqstoreClient
 
 from anchor2.anchor2 import TabularExplainer
 from rise.rise import RiseImageExplainer
+from jsonschema import validate
 
 app = Flask(__name__)
 
@@ -74,14 +75,26 @@ def hydroserving_classifier_call(x, feature_names, application_name,
     return predicted_label
 
 
-def is_valid_anchor_config(anchor_config):
-    return True
+anchor_schema = {
+    "type": "object",
+    "properties": {
+        "application_name": {"type": "string"},
+        "config": {"type": "object",
+                   "properties": {
+                       "feature_names": {"type": "array"},
+                       "ordinal_features_idx": {"type": "array"},
+                       "label_decoders": {"type": "object"},
+                       "oh_encoded_categories": {"type": "object"},
+                   }
+                   },
+    },
+}
 
 
 @app.route("/anchor", methods=['POST'])
 def anchor():
     inp_json = request.get_json()
-    # TODO verify input json
+    validate(inp_json, anchor_schema)
     application_id = get_application_id(inp_json['application_name'])
     anchor_config = inp_json['config']
     data = get_data_from_reqstore(str(application_id))
@@ -119,20 +132,32 @@ def hydroserving_image_classifier_call(x,
     return predicted_probas
 
 
-def is_valid_rise_config(rise_config):
-    return True
+rise_schema = {
+    "type": "object",
+    "properties": {
+        "application_name": {"type": "string"},
+        "config": {"type": "object",
+                   "properties": {
+                       "input_size": {"type": "array"},
+                       "number_of_masks": {"type": "number"},
+                       "mask_granularity": {"type": "number"},
+                       "mask_density": {"type": "number"},
+                       "single_channel": {"type": "boolean"},
+                   }
+                   },
+    },
+}
 
 
 @app.route("/rise", methods=['POST'])
 def rise():
     inp_json = request.get_json()
+    validate(inp_json, rise_schema)
     rise_config = inp_json['config']
-    # TODO check config
-
     rise_explainer = RiseImageExplainer()
 
     prediction_fn = partial(hydroserving_image_classifier_call,
-                            application_name=rise_config['application_name'])
+                            application_name=inp_json['application_name'])
 
     rise_explainer.fit(prediction_fn=prediction_fn,
                        input_size=rise_config['input_size'],
