@@ -29,15 +29,15 @@ class DiscretizerTransformer:
         # n_bins for each feature is selected by Freedman–Diaconis rule
         iq_ranges = np.array([np.subtract(*np.percentile(data[:, f_idx], [75, 25])) for f_idx in ordinal_indices])
         bins_widths = 2 * iq_ranges / np.cbrt(data.shape[0])
-        features_n_bins = np.ceil(np.ptp(data[:, ordinal_indices], axis=0) / bins_widths).astype(np.int)  # FIXME deletion by 0.0
-        features_n_bins = np.maximum(features_n_bins, 1)
+        bin_sizes = np.ceil(np.ptp(data[:, ordinal_indices], axis=0) / bins_widths).astype(np.int)
+        bin_sizes = np.maximum(bin_sizes, 1)  # Costil for cases when  number of bins is < 1
 
         discretizers = []
-        for number_of_features_in_bin in features_n_bins:
-            if number_of_features_in_bin == 1:
+        for n_bins in bin_sizes:
+            if n_bins == 1:
                 discretizers.append(FunctionTransformer())
             else:
-                discretizers.append(KBinsDiscretizer(n_bins=number_of_features_in_bin, encode="ordinal", strategy="quantile"))
+                discretizers.append(KBinsDiscretizer(n_bins=n_bins, encode="ordinal", strategy="quantile"))
 
         for discretizer, feature_idx in zip(discretizers, ordinal_indices):
             discretizer.fit(data[:, feature_idx].reshape(-1, 1))

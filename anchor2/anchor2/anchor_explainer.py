@@ -65,7 +65,12 @@ class TabularExplainer(AnchorExplainer):
         self.label_decoders = label_decoders
         self.translators = self.discretizer.map_translators(label_decoders, self.feature_names)
 
-    def explain(self, x: np.array, classifier_fn, strategy: str = "kl-lucb", threshold=0.95, verbose=False) -> TabularExplanation:
+    def explain(self, x: np.array,
+                classifier_fn,
+                strategy: str = "kl-lucb",
+                threshold=0.95,
+                selector_params: Dict = {},
+                verbose=False) -> TabularExplanation:
 
         logger.disable("anchor2.anchor2")
 
@@ -82,7 +87,6 @@ class TabularExplainer(AnchorExplainer):
         else:
             raise ValueError("Strategy is not recognized, possible options are ['greedy', 'kl-lucb']")
 
-        # TODO Pass KL-LUCB parameters
         explanation: TabularExplanation = selector.find_explanation(x=x,
                                                                     data=self.data,
                                                                     d_data=self.discretized_data,
@@ -92,7 +96,9 @@ class TabularExplainer(AnchorExplainer):
                                                                     ordinal_idx=self.ordinal_features_idx,
                                                                     feature_names=self.feature_names,
                                                                     precision_threshold=threshold,
+                                                                    **selector_params
                                                                     )
+
         translator = ExplanationTranslator()
         translator.fit(self.translators, self.ordinal_features_idx)
         explanation.str = translator.transform(explanation)

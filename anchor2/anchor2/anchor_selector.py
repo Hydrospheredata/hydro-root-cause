@@ -9,6 +9,7 @@ from .tabular_explanation import TabularExplanation, EqualityPredicate, Inequali
     LessPredicate
 from itertools import compress
 from loguru import logger
+from jsonschema import validate
 
 
 class AnchorSelectionStrategy:
@@ -128,7 +129,7 @@ def compute_reward_on_augmented_data(anchor: TabularExplanation,
             # Values which do not satisfy predicates, are replaced with possible values
             possible_values = anchor.get_possible_feature_values(feature_id)
 
-            # FIXME This line can throw ValueError: possible_values must be non-empty
+            # FIXME This line sometimes throw "ValueError: possible_values must be non-empty"
             possible_values = np.random.choice(possible_values, size=np.sum(~feature_mask), replace=True)
 
             data_copy[~feature_mask, feature_id] = possible_values
@@ -171,7 +172,8 @@ class BeamAnchorSearch(AnchorSelectionStrategy):
                          beam_size=5,
                          batch_size=150,
                          tolerance=0.3,
-                         delta=0.2
+                         delta=0.2,
+                         **kwargs
                          ) -> Explanation:
         """
         This function returns the first anchor which precision will be >= precision_threshold. Anchor selection process is an iterative
@@ -212,7 +214,7 @@ class BeamAnchorSearch(AnchorSelectionStrategy):
         mean_precision, mean_coverage = np.mean(metrics, axis=0)
         logger.info(f"Mean precision == {mean_precision:.3f}")
 
-        while np.all(metrics[:, 0] < precision_threshold):
+        while not np.any(metrics[:, 0] > precision_threshold):
 
             draw_fns = [partial(compute_reward_on_batch,
                                 d_data=d_data,
