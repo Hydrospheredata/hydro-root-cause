@@ -69,7 +69,7 @@ class RiseImageExplainer:
 
         masks = np.empty((self.number_of_masks, *self.input_size))
 
-        for i in range(self.number_of_masks):
+        for i in tqdm(range(self.number_of_masks), desc="Generating masks"):
             # Random shifts
             x = np.random.randint(0, cell_size[0])
             y = np.random.randint(0, cell_size[1])
@@ -96,7 +96,7 @@ class RiseImageExplainer:
         predictions = []
         # Make sure multiplication is being done for correct axes
         masked = x * self.masks
-        for i in tqdm(range(0, self.number_of_masks, batch_size)):
+        for i in tqdm(range(0, self.number_of_masks, batch_size), desc = "Calculating saliency maps"):
             masked_x = masked[i:min(i + batch_size, self.number_of_masks)]
             predictions.append(self.prediction_fn(masked_x))
         predictions = np.concatenate(predictions)
