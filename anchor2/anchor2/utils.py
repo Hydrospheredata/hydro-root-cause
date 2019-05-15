@@ -1,10 +1,10 @@
 from typing import List, Dict
 
 import numpy as np
-from sklearn.preprocessing import KBinsDiscretizer, OneHotEncoder
+from sklearn.preprocessing import KBinsDiscretizer, OneHotEncoder, FunctionTransformer
 from itertools import chain
 
-from anchor2.anchor2.tabular_explanation import *
+from .tabular_explanation import *
 from loguru import logger
 
 
@@ -29,10 +29,16 @@ class DiscretizerTransformer:
         # n_bins for each feature is selected by Freedman–Diaconis rule
         iq_ranges = np.array([np.subtract(*np.percentile(data[:, f_idx], [75, 25])) for f_idx in ordinal_indices])
         bins_widths = 2 * iq_ranges / np.cbrt(data.shape[0])
-        features_n_bins = np.ceil(np.ptp(data[:, ordinal_indices], axis=0) / bins_widths).astype(np.int)  # FIXME deletion by 0.0
-        features_n_bins = np.maximum(features_n_bins, 2)
+        bin_sizes = np.ceil(np.ptp(data[:, ordinal_indices], axis=0) / bins_widths).astype(np.int)
+        bin_sizes = np.maximum(bin_sizes, 1)  # Costil for cases when  number of bins is < 1
 
-        discretizers = [KBinsDiscretizer(n_bins=n_bins, encode="ordinal", strategy="quantile") for n_bins in features_n_bins]
+        discretizers = []
+        for n_bins in bin_sizes:
+            if n_bins == 1:
+                discretizers.append(FunctionTransformer())
+            else:
+                discretizers.append(KBinsDiscretizer(n_bins=n_bins, encode="ordinal", strategy="quantile"))
+
         for discretizer, feature_idx in zip(discretizers, ordinal_indices):
             discretizer.fit(data[:, feature_idx].reshape(-1, 1))
         self.discretizers = discretizers
@@ -118,6 +124,9 @@ class DiscretizerTransformer:
                 discretized_data[:, self._feature_mapping[tuple(feature_idxs)]].reshape(-1, 1))
 
             restored_data[:, feature_idxs] = oh_encoded_category.toarray()
+
+        for feature_idx in self.columns2copy:
+            restored_data[:, feature_idx] = discretized_data[:, self._feature_mapping[feature_idx]]
 
         return restored_data
 

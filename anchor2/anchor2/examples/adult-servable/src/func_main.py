@@ -10,13 +10,12 @@ features = ['Age', 'Workclass', 'Education', 'Marital Status', 'Occupation',
             
 
 def extract_value(proto):
-    return np.array(proto.int64_val, dtype='int64') \
-        .reshape([dim.size for dim in proto.tensor_shape.dim])
+    return np.array(proto.int64_val, dtype='int64').reshape([dim.size for dim in proto.tensor_shape.dim])
 
 
 def predict(**kwargs):
     extracted = [extract_value(kwargs[feature]) for feature in features]
-    transformed = np.squeeze(np.dstack(extracted))
+    transformed = np.dstack(extracted).reshape(-1, len(features))
     predicted = clf.predict(transformed)
 
     response = hs.TensorProto(

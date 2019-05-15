@@ -165,7 +165,9 @@ class KullbackLeiblerLUCB(MultiArmedBanditSolver):
         highest_higher_bound_among_not_best_arms = upper_bounds[l]
 
         gap = highest_higher_bound_among_not_best_arms - lowest_lower_bound_among_best_arms
-        logger.info(f"{self.iteration}-th iteration gap is {gap:.3f}")  # TODO add logging
+        logger.info(f"{self.iteration}-th iteration gap is {gap:.3f}")
+        logger.info(f"L = {self.arms[u]}, U = {self.arms[l]}")
+        logger.info(f"arms = {[str(a) for a in self.arms]}")
 
         while gap > tolerance:
             # Update iteration number, and draw samples from  l and u arms.
@@ -195,8 +197,6 @@ class KullbackLeiblerLUCB(MultiArmedBanditSolver):
             highest_higher_bound_among_not_best_arms = upper_bounds[l]
 
             gap = highest_higher_bound_among_not_best_arms - lowest_lower_bound_among_best_arms
-            logger.info(f"{self.iteration}-th iteration gap is {gap:.3f}")  # TODO add logging
+            logger.info(f"{self.iteration}-th iteration gap is {gap:.3f}")
 
         return self.arms[best_mean]
-
-

@@ -3,12 +3,13 @@ import numpy as np
 from copy import deepcopy
 
 from functools import partial
-from anchor2.anchor2.explanation import Explanation
-from anchor2.anchor2.multi_armed_bandit_solver import BernoulliArm, KullbackLeiblerLUCB
-from anchor2.anchor2.tabular_explanation import TabularExplanation, EqualityPredicate, InequalityPredicate, GreaterOrEqualPredicate, \
+from .explanation import Explanation
+from .multi_armed_bandit_solver import BernoulliArm, KullbackLeiblerLUCB
+from .tabular_explanation import TabularExplanation, EqualityPredicate, InequalityPredicate, GreaterOrEqualPredicate, \
     LessPredicate
 from itertools import compress
 from loguru import logger
+from jsonschema import validate
 
 
 class AnchorSelectionStrategy:
@@ -85,7 +86,7 @@ def compute_metrics_on_original_data(anchor, d_data, labels, target_label) -> Tu
     :return: (precision, coverage)
     """
 
-    data_with_anchor_index = np.apply_along_axis(anchor.check_against_sample, axis=1, arr=d_data)
+    data_with_anchor_index = np.apply_along_axis(anchor.check_against_sample, axis=1, arr=d_data)  # TODO: Candidate for profiling
     data_with_anchor = d_data[data_with_anchor_index]
     labels_with_anchor = labels[data_with_anchor_index]
 
@@ -126,13 +127,14 @@ def compute_reward_on_augmented_data(anchor: TabularExplanation,
 
         if np.sum(feature_mask) < d_data_batch.shape[0]:
             # Values which do not satisfy predicates, are replaced with possible values
-
             possible_values = anchor.get_possible_feature_values(feature_id)
-            possible_values = np.random.choice(possible_values, size=np.sum(~feature_mask), replace=True)
-            data_copy[~feature_mask, feature_id] = possible_values
+
+            # FIXME This line sometimes throw "ValueError: possible_values must be non-empty"
+            replacement_values = np.random.choice(possible_values, size=np.sum(~feature_mask), replace=True)
+
+            data_copy[~feature_mask, feature_id] = replacement_values
 
     reward = np.sum(d_classifier_fn(d_data_batch) == target_label)
-
     return reward
 
 
@@ -169,8 +171,9 @@ class BeamAnchorSearch(AnchorSelectionStrategy):
                          anchor_pool_size=25,
                          beam_size=5,
                          batch_size=150,
-                         tolerance=0.2,
-                         delta=0.2
+                         tolerance=0.3,
+                         delta=0.2,
+                         **kwargs
                          ) -> Explanation:
         """
         This function returns the first anchor which precision will be >= precision_threshold. Anchor selection process is an iterative
@@ -211,9 +214,14 @@ class BeamAnchorSearch(AnchorSelectionStrategy):
         mean_precision, mean_coverage = np.mean(metrics, axis=0)
         logger.info(f"Mean precision == {mean_precision:.3f}")
 
-        while np.all(metrics[:, 0] < precision_threshold):
-            draw_fns = [partial(compute_reward_on_batch, d_data=d_data, batch_size=batch_size,
-                                anchor=a, d_classifier_fn=d_classifier_fn, target_label=target_label) for a in anchors]
+        while not np.any(metrics[:, 0] > precision_threshold):
+
+            draw_fns = [partial(compute_reward_on_batch,
+                                d_data=d_data,
+                                batch_size=batch_size,
+                                anchor=a,
+                                d_classifier_fn=d_classifier_fn,
+                                target_label=target_label) for a in anchors]
 
             # Represent each anchor as a Bernoulli distribution with mean equal to anchor precision
             arms = [BernoulliArm(anchor, draw_fn) for anchor, draw_fn in zip(anchors, draw_fns)]

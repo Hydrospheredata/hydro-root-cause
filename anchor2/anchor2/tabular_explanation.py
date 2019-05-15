@@ -1,6 +1,6 @@
 from typing import Generator, List, Dict, Any
 from abc import ABC, abstractmethod
-from anchor2.anchor2.explanation import Explanation, Predicate
+from .explanation import Explanation, Predicate
 import numpy as np
 
 
@@ -62,7 +62,11 @@ class TabularExplanation(Explanation):
             present_in_anchor = new_predicate.check_against_sample(self.x)
 
             ''' FIXME Dead code for checking whether predicate can reduce # of possible feature values to zero. But if predicate passes
-             present_in_anchor test, it automatically has at least 1 possible feature value. '''
+             present_in_anchor test, it automatically has at least 1 possible feature value. 
+             
+             Even so, line 131 in anchor.selector.py do throw the error like some feature has no possible values.
+        
+             '''
 
             # filtered_feature_values = []
             # for feature_id, feature_values in enumerate(self._feature_values):
@@ -70,10 +74,10 @@ class TabularExplanation(Explanation):
             #     for predicate in filter(lambda p: p.feature_id == feature_id, current_predicates):
             #         suitable_values_masks.append(predicate.check_against_column(feature_values)[:, np.newaxis])
             #     suitable_values_mask = np.all(np.concatenate(suitable_values_masks, axis=1), axis=1)
-            #     # TODO if suitable_values_mask are identical among predicates => we can safely delete one of them, isn't it?
+            #     #if suitable_values_mask are identical among predicates => we can safely delete one of them, isn't it?
             #     filtered_feature_values.append(feature_values[suitable_values_mask])
             #
-            # if any([len(x) == 0 for x in filtered_feature_values]):
+            # if any([len(df) == 0 for df in filtered_feature_values]):
             #     del current_predicates[-1]
             #     raise Exception("Some feature is destroyed")
             # else:
@@ -104,8 +108,8 @@ class TabularExplanation(Explanation):
     def simplify_predicates(self):
         """
         Replace two or more overlapping predicates with the single strongest one.
-        e.g. x > 3 and x > 5 => x > 5
-        e.g. x = 3 and x < 10 => x = 3
+        e.g. df > 3 and df > 5 => df > 5
+        e.g. df = 3 and df < 10 => df = 3
         :return:
         """
         for feature_id, feature_values in enumerate(self._feature_values):
@@ -145,7 +149,7 @@ class TabularExplanation(Explanation):
 
             # Fetch all inequality predicates, next fetch all geq predicates. It's guaranteed by previous code that we will fetch
             # 0 or 1 geq predicates. If any of inequality predicates has the same value as geq, meaning geq is not geq but ge, remove
-            # both inequality predicate and geq predicate and replace them with single new geq.
+            # both inequality predicate and geq predicate and replace them with single new geq and leq.
             ineq_predicates = list(filter(lambda p: p.feature_id == feature_id and type(p) == InequalityPredicate, self.predicates))
             geq_predicates = list(filter(lambda p: p.feature_id == feature_id and type(p) == GreaterOrEqualPredicate, self.predicates))
             if len(geq_predicates) == 1:
@@ -157,11 +161,28 @@ class TabularExplanation(Explanation):
                                                         self.predicates))
                     new_geq_predicate = geq_predicates[0].copy()
                     new_geq_predicate.value += 1
+
+                    new_le_predicate = LessPredicate(value=ineq_geq_interception[0].value,
+                                                     feature_idx=ineq_geq_interception[0].feature_id,
+                                                     feature_name=ineq_geq_interception[0].feature_name)
+                    new_geq_predicate.value += 1
+
                     compressed_predicates.append(new_geq_predicate)
+                    compressed_predicates.append(new_le_predicate)
                     self.predicates = compressed_predicates
 
-            # ineq_predicates = list(filter(lambda p: p.feature_id == feature_id and type(p) == InequalityPredicate, self.predicates))
-            # TODO translate ineqs into mask of feature values, and maybe there is a chance to replace it with le, ge, or eq predicate
+            # Symmetrical case as one before, but for le predicates.
+            # Fetch all inequality predicates, next fetch all le predicates. It's guaranteed by previous code that we will fetch
+            # 0 or 1 le predicates. If any of inequality predicates has the same value as le, meaning le is redundant, remove
+            # le predicate
+            ineq_predicates = list(filter(lambda p: p.feature_id == feature_id and type(p) == InequalityPredicate, self.predicates))
+            le_predicates = list(filter(lambda p: p.feature_id == feature_id and type(p) == LessPredicate, self.predicates))
+            if len(le_predicates) == 1:
+                le_value = le_predicates[0].value
+                ineq_le_interception = list(filter(lambda p: p.value == le_value, ineq_predicates))
+                if len(ineq_le_interception) > 0:
+                    compressed_predicates = list(filter(lambda p: p is not le_predicates[0], self.predicates))
+                    self.predicates = compressed_predicates
 
     def get_possible_feature_values(self, feature_id):
         """
@@ -203,7 +224,7 @@ class TabularPredicate(Predicate):
     @abstractmethod
     def check_against_sample(self, x: np.array):
         """
-        Returns True, if predicate holds for sample x, False otherwise
+        Returns True, if predicate holds for sample df, False otherwise
         :param x:
         :return:
         """
@@ -212,7 +233,7 @@ class TabularPredicate(Predicate):
     @abstractmethod
     def check_against_column(self, x: np.array):
         """
-        Returns True, if predicate holds for every element of x, False otherwise
+        Returns True, if predicate holds for every element of df, False otherwise
         :param x:
         :return:
         """
@@ -250,6 +271,9 @@ class EqualityPredicate(TabularPredicate):
                 return True
         return False
 
+    def copy(self):
+        return EqualityPredicate(self.value, self.feature_id, self.feature_name)
+
 
 class InequalityPredicate(TabularPredicate):
     def __str__(self):
@@ -266,6 +290,9 @@ class InequalityPredicate(TabularPredicate):
             if type(other) is EqualityPredicate and other.value == self.value:
                 return True
         return False
+
+    def copy(self):
+        return InequalityPredicate(self.value, self.feature_id, self.feature_name)
 
 
 class GreaterOrEqualPredicate(TabularPredicate):
@@ -288,6 +315,9 @@ class GreaterOrEqualPredicate(TabularPredicate):
                 return True
         return False
 
+    def copy(self):
+        return GreaterOrEqualPredicate(self.value, self.feature_id, self.feature_name)
+
 
 class LessPredicate(TabularPredicate):
     def __str__(self):
@@ -308,3 +338,6 @@ class LessPredicate(TabularPredicate):
             elif type(other) is EqualityPredicate and other.value >= self.value:
                 return True
         return False
+
+    def copy(self):
+        return LessPredicate(self.value, self.feature_id, self.feature_name)

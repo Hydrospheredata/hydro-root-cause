@@ -1,13 +1,13 @@
 from abc import ABC, abstractmethod
-from typing import Callable, Union, List, Dict
+from typing import Union, List, Dict
 
 import numpy as np
 import pandas as pd
-
-from anchor2.anchor2.anchor_selector import BeamAnchorSearch, GreedyAnchorSearch, AnchorSelectionStrategy
-from anchor2.anchor2.explanation import Explanation
-from anchor2.anchor2.utils import DiscretizerTransformer, ExplanationTranslator
 from loguru import logger
+
+from .anchor_selector import BeamAnchorSearch, GreedyAnchorSearch
+from .tabular_explanation import TabularExplanation
+from .utils import DiscretizerTransformer, ExplanationTranslator
 
 
 class AnchorExplainer(ABC):
@@ -25,7 +25,7 @@ class TabularExplainer(AnchorExplainer):
 
     def fit(self,
             data: Union[np.array, pd.DataFrame],
-            label_decoders: Dict[str, List[str]],
+            label_decoders: Dict[int, List[str]],
             ordinal_features_idx: List[int],
             oh_encoded_categories: Dict[str, List[int]],
             feature_names: List[str] = None
@@ -34,7 +34,7 @@ class TabularExplainer(AnchorExplainer):
         Fits an instance of TabularExplainer with hyperparameters
         :param data: Union[np.array, pd.DataFrame] data which will be used for explaining samples passed
         :param feature_names: List of feature names
-        :param label_decoders: Dictionary from feature name to list of labels used for label encoding for that feature name
+        :param label_decoders: Dictionary from feature idx to list of labels used for label encoding for that feature name
         :param ordinal_features_idx: Indices of float features
         :param oh_encoded_categories: Dictionary of "Feature name" -> List of feature indices in data used for encoding this "feature name"
         """
@@ -64,12 +64,17 @@ class TabularExplainer(AnchorExplainer):
         self.label_decoders = label_decoders
         self.translators = self.discretizer.map_translators(label_decoders, self.feature_names)
 
-    def explain(self, x: np.array, classifier_fn, strategy: str = "kl-lucb", threshold=0.95, verbose=False):
+    def explain(self, x: np.array,
+                classifier_fn,
+                strategy: str = "kl-lucb",
+                threshold=0.95,
+                selector_params: Dict = {},
+                verbose=False) -> TabularExplanation:
 
-        logger.disable("anchor2.anchor2")
+        logger.disable("anchor2")
 
         if verbose:
-            logger.enable("anchor2.anchor2")
+            logger.enable("anchor2")
 
         if strategy == 'kl-lucb':
             logger.info("Using Kullback-Leibler LUCB method")
@@ -81,18 +86,20 @@ class TabularExplainer(AnchorExplainer):
         else:
             raise ValueError("Strategy is not recognized, possible options are ['greedy', 'kl-lucb']")
 
-        explanation: Explanation = selector.find_explanation(x=x,
-                                                             data=self.data,
-                                                             d_data=self.discretized_data,
-                                                             classifier_fn=classifier_fn,
-                                                             d_classifier_fn=lambda y: classifier_fn(self.discretizer.inverse_transform(y)),
-                                                             ordinal_idx=self.ordinal_features_idx,
-                                                             feature_names=self.feature_names,
-                                                             precision_threshold=threshold,
-                                                             )
+        explanation: TabularExplanation = selector.find_explanation(x=x,
+                                                                    data=self.data,
+                                                                    d_data=self.discretized_data,
+                                                                    classifier_fn=classifier_fn,
+                                                                    d_classifier_fn=lambda y: classifier_fn(
+                                                                        self.discretizer.inverse_transform(y)),
+                                                                    ordinal_idx=self.ordinal_features_idx,
+                                                                    feature_names=self.feature_names,
+                                                                    precision_threshold=threshold,
+                                                                    **selector_params
+                                                                    )
+
         translator = ExplanationTranslator()
         translator.fit(self.translators, self.ordinal_features_idx)
         explanation.str = translator.transform(explanation)
 
         return explanation
-

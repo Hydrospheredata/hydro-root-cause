@@ -2,7 +2,7 @@ from typing import Dict, Tuple, Callable, TypeVar, Sequence
 
 import numpy as np
 from skimage.transform import resize
-
+from tqdm import tqdm
 
 T = TypeVar('T')  # The result type of prediction_fn
 
@@ -14,12 +14,15 @@ class RiseImageExplainer:
     def fit(self,
             prediction_fn: Callable[[np.array], Sequence[T]],
             input_size: Tuple[int, int],
-            class_names: Dict[T, str],  # TODO use this param in fit and explain
             number_of_masks: int = 1000,
             mask_granularity: int = 7,
-            mask_density: float = 0.5) -> 'RiseImageExplainer':
+            mask_density: float = 0.5,
+            single_channel=False,
+            channels_last=False) -> 'RiseImageExplainer':
         """
 
+        :param channels_last:
+        :param single_channel: For B&W images
         :return: Explainer with paramters stored inside
         :rtype: RiseImageExplainer
         :param prediction_fn: function which takes np.array with shape (batch_size, input_size[0], input_size[1], 3)
@@ -27,7 +30,7 @@ class RiseImageExplainer:
         :param input_size: Tuple with image width and height in pixels
         :param class_names: Mapping from class_id to class name. class_id has to be the result type of prediction_fn
         :param number_of_masks: Number of masks generated and evaluated by the explainer
-        :param mask_granularity: Parameter specifies how many cells will be in one masks. Mask is a [mask_granularity x mask_granularity]
+        :param mask_granularity: Parameter specifies how many cells will be in one masks. Mask is a [mask_granularity df mask_granularity]
         grid.
         :param mask_density: Parameter specifies how many cells will be present in the mask. More dense the matrix will be, more parts of
         the original image will be present after its multiplication with mask.
@@ -46,7 +49,9 @@ class RiseImageExplainer:
         self.mask_density = mask_density
         self.input_size = input_size
         self.prediction_fn = prediction_fn
-        self.masks = self._generate_masks()  # Is it valid to store the same masks for everything
+        self.single_channel = single_channel
+        self.channels_last = channels_last
+        self.masks = self._generate_masks()
 
         return self
 
@@ -64,28 +69,36 @@ class RiseImageExplainer:
 
         masks = np.empty((self.number_of_masks, *self.input_size))
 
-        for i in range(self.number_of_masks):
+        for i in tqdm(range(self.number_of_masks), desc="Generating masks"):
             # Random shifts
             x = np.random.randint(0, cell_size[0])
             y = np.random.randint(0, cell_size[1])
             # Linear upsampling and cropping
             masks[i, :, :] = resize(grid[i], up_size, order=1, mode='reflect', )[x:x + self.input_size[0], y:y + self.input_size[1]]
-        masks = masks.reshape(-1, *self.input_size, 1)
+
+        if self.single_channel:
+            masks = masks.reshape(-1, *self.input_size)
+        else:
+            if self.channels_last:
+                masks = masks.reshape(-1, *self.input_size, 1)
+            else:
+                masks = masks.reshape(-1, 1, *self.input_size)
+
         return masks
 
-    def explain(self, x, batch_size=100) -> np.array:
+    def explain(self, x, batch_size=20) -> np.array:
         """
-        Multiply x by different masks and look at the prediction results.
+        Multiply df by different masks and look at the prediction results.
+        :param batch_size:
         :param x: Image represented as an np.array of shape (input_size[0], input_size[1], 3)
         :return: Array which contains sailency maps for each class. [Class_id -> Saliency map]
         """
-        batch_size = 100
         predictions = []
         # Make sure multiplication is being done for correct axes
         masked = x * self.masks
-        for i in range(0, self.number_of_masks, batch_size):
-            # TODO check for situation then self.number_of_masks%batch_size!=0
-            predictions.append(self.prediction_fn(masked[i:min(i + batch_size, self.number_of_masks)]))
+        for i in tqdm(range(0, self.number_of_masks, batch_size), desc = "Calculating saliency maps"):
+            masked_x = masked[i:min(i + batch_size, self.number_of_masks)]
+            predictions.append(self.prediction_fn(masked_x))
         predictions = np.concatenate(predictions)
         saliency_map = predictions.T.dot(self.masks.reshape(self.number_of_masks, -1)).reshape(-1, *self.input_size)
         saliency_map = saliency_map / self.number_of_masks / self.mask_density

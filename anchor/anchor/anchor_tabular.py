@@ -32,7 +32,7 @@ class Discretizer(KBinsDiscretizer):
 
     def get_feature_names(self, ):
         check_is_fitted(self, 'bin_edges_')
-        feature_names = self.__get_discretizer_names(self.bin_edges_[0], "x")
+        feature_names = self.__get_discretizer_names(self.bin_edges_[0], "df")
         return np.array(feature_names, dtype=object)
 
 
@@ -123,7 +123,7 @@ class AnchorTabularExplainer(object):
                 continue
             f_idx = f_idx[0]
             f_name = self.feature_names[f_idx]
-            discrete_category_names[f_idx] = [x.replace("x", f_name) for x in transformer.get_feature_names()]
+            discrete_category_names[f_idx] = [x.replace("df", f_name) for x in transformer.get_feature_names()]
 
         # self.d_data = self.encoder.transform(self.data, )  # Discretize data
 
@@ -376,7 +376,7 @@ class AnchorTabularExplainer(object):
                 num_samples=num_samples)
 
             digitized_raw_data = self.encoder.transform(raw_data)
-            data = np.zeros((num_samples, len(mapping)), int)  # Binary Matrix, (n x m), where m is number of predicates
+            data = np.zeros((num_samples, len(mapping)), int)  # Binary Matrix, (n df m), where m is number of predicates
             # 1 if predicate is satisfied, 0 if predicate is not satisfied
             for i in mapping:
                 f, op, value = mapping[i]

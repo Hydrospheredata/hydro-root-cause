@@ -4,7 +4,10 @@ from keras.applications.resnet50 import ResNet50, preprocess_input, decode_predi
 from keras.preprocessing import image
 from matplotlib import pyplot as plt
 import os
-import rise
+import sys
+
+sys.path.append("../../")
+from rise.rise import RiseImageExplainer
 
 FILE_PATH = os.path.dirname(os.path.realpath(__file__))
 
@@ -26,10 +29,9 @@ def class_name(idx):
     return decode_predictions(np.eye(1, 1000, idx))[0][0][1]
 
 
-explainer = rise.RiseImageExplainer()
+explainer = RiseImageExplainer()
 explainer.fit(model.predict,
               input_size,
-              class_name,
               500,
               8,
               0.5)
