@@ -86,7 +86,7 @@ def compute_metrics_on_original_data(anchor, d_data, labels, target_label) -> Tu
     :return: (precision, coverage)
     """
 
-    data_with_anchor_index = np.apply_along_axis(anchor.check_against_sample, axis=1, arr=d_data)
+    data_with_anchor_index = np.apply_along_axis(anchor.check_against_sample, axis=1, arr=d_data)  # TODO: Candidate for profiling
     data_with_anchor = d_data[data_with_anchor_index]
     labels_with_anchor = labels[data_with_anchor_index]
 
@@ -130,9 +130,9 @@ def compute_reward_on_augmented_data(anchor: TabularExplanation,
             possible_values = anchor.get_possible_feature_values(feature_id)
 
             # FIXME This line sometimes throw "ValueError: possible_values must be non-empty"
-            possible_values = np.random.choice(possible_values, size=np.sum(~feature_mask), replace=True)
+            replacement_values = np.random.choice(possible_values, size=np.sum(~feature_mask), replace=True)
 
-            data_copy[~feature_mask, feature_id] = possible_values
+            data_copy[~feature_mask, feature_id] = replacement_values
 
     reward = np.sum(d_classifier_fn(d_data_batch) == target_label)
     return reward
