@@ -1,14 +1,13 @@
 from abc import ABC, abstractmethod
-from typing import Callable, Union, List, Dict
+from typing import Union, List, Dict
 
 import numpy as np
 import pandas as pd
-
-from .anchor_selector import BeamAnchorSearch, GreedyAnchorSearch, AnchorSelectionStrategy
-from .explanation import Explanation
-from .utils import DiscretizerTransformer, ExplanationTranslator
-from .tabular_explanation import TabularExplanation
 from loguru import logger
+
+from .anchor_selector import BeamAnchorSearch, GreedyAnchorSearch
+from .tabular_explanation import TabularExplanation
+from .utils import DiscretizerTransformer, ExplanationTranslator
 
 
 class AnchorExplainer(ABC):
@@ -72,10 +71,10 @@ class TabularExplainer(AnchorExplainer):
                 selector_params: Dict = {},
                 verbose=False) -> TabularExplanation:
 
-        logger.disable("anchor2.anchor2")
+        logger.disable("anchor2")
 
         if verbose:
-            logger.enable("anchor2.anchor2")
+            logger.enable("anchor2")
 
         if strategy == 'kl-lucb':
             logger.info("Using Kullback-Leibler LUCB method")

@@ -169,9 +169,6 @@ class KullbackLeiblerLUCB(MultiArmedBanditSolver):
         logger.info(f"L = {self.arms[u]}, U = {self.arms[l]}")
         logger.info(f"arms = {[str(a) for a in self.arms]}")
 
-        logger.info(f"Means = {means}")
-        # raise Exception("FIX THE GAP")
-
         while gap > tolerance:
             # Update iteration number, and draw samples from  l and u arms.
             self.iteration += 1
