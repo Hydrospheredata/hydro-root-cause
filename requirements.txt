@@ -10,3 +10,6 @@ requests
 scikit-image
 grpcio-tools
 hydro-serving-grpc
+python-dotenv
+pymongo
+celery[redis]

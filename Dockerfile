@@ -19,6 +19,10 @@ RUN pip3 install -r requirements.txt
 WORKDIR /app
 COPY . /app
 
+RUN pip3 install anchor2/
+RUN pip3 install rise/
+
+
 EXPOSE 5000
 
 ENTRYPOINT ["python"]
