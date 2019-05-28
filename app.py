@@ -27,8 +27,8 @@ MONGO_PORT = int(os.getenv("MONGO_PORT", 27017))
 REDIS_URL = os.getenv("REDIS_URL", "redis")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 
-client = MongoClient(host=MONGO_URL, port=MONGO_PORT)
-db = client['root_cause']
+mongo_client = MongoClient(host=MONGO_URL, port=MONGO_PORT)
+db = mongo_client['root_cause']
 
 app = Flask(__name__)
 app.config['CELERY_BROKER_URL'] = f"redis://{REDIS_URL}:{REDIS_PORT}/0"
@@ -190,11 +190,12 @@ def anchor():
 @celery.task(bind=True)
 def anchor_task(explanation_id: str):
     # Shadows names from flask server scope to prevent problems with forks
-    client: MongoClient = MongoClient(host=MONGO_URL, port=MONGO_PORT)
-    db: Database = client['root_cause']
+    mongo_client: MongoClient = MongoClient(host=MONGO_URL, port=MONGO_PORT)
+    db: Database = mongo_client['root_cause']
 
     explanation_id = objectid.ObjectId(explanation_id)
-    job_json = db.anchor_explanations.find_one({"_id": explanation_id})
+    job_json = db.anchor_explanations.find_one_and_update({"_id": explanation_id},
+                                                          {"$set": {"started_at": datetime.datetime.now()}})
 
     if 'result' in job_json:
         return job_json['results']
@@ -270,11 +271,12 @@ def rise():
 @celery.task(bind=True)
 def rise_task(self, explanation_id: str):
     # Shadows names from flask server scope to prevent problems with forks
-    client: MongoClient = MongoClient(host=MONGO_URL, port=MONGO_PORT)
-    db: Database = client['root_cause']
+    mongo_client: MongoClient = MongoClient(host=MONGO_URL, port=MONGO_PORT)
+    db: Database = mongo_client['root_cause']
 
     explanation_id = objectid.ObjectId(explanation_id)
-    job_json = db.rise_explanations.find_one({"_id": explanation_id})
+    job_json = db.rise_explanations.find_one_and_update({"_id": explanation_id},
+                                                        {"$set": {"started_at": datetime.datetime.now()}})
 
     if 'result' in job_json:
         return job_json['results']
