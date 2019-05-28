@@ -43,7 +43,7 @@ def hello():
     return "hydro_root_cause_service"
 
 
-@app.route('/status/<task_id>', methods=["GET"])
+@app.route('/status/<method>/<task_id>', methods=["GET"])
 def task_status(task_id, method):
     if method == "rise":
         task = rise_task.AsyncResult(task_id)

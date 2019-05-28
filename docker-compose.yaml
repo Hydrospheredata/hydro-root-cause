@@ -2,11 +2,19 @@ version: '3'
 services:
   web:
     build: .
+    command: python app.py
     depends_on:
       - mongo
       - redis
+      - worker
     ports:
      - "5000:5000"
+  worker:
+    build: .
+    command: celery -A app.celery worker
+    depends_on:
+      - mongo
+      - redis
   redis:
     image: "redis"
     expose:
