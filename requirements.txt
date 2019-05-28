@@ -13,3 +13,4 @@ hydro-serving-grpc
 python-dotenv
 pymongo
 celery[redis]
+supervisor

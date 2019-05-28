@@ -10,8 +10,9 @@ RUN  update-alternatives --set libblas.so.3 \
     update-alternatives --set liblapack.so.3 \
     /usr/lib/atlas-base/atlas/liblapack.so.3
 
-RUN apt-get install -y python-matplotlib
-RUN apt-get install -y python3-pip
+RUN apt-get install -y python-matplotlib python3-pip supervisor
+
+RUN mkdir  /var/log/celery
 
 COPY requirements.txt requirements.txt
 RUN pip3 install -r requirements.txt
@@ -19,11 +20,13 @@ RUN pip3 install -r requirements.txt
 WORKDIR /app
 COPY . /app
 
+COPY supervisor.conf /etc/supervisor.conf
+
 RUN pip3 install anchor2/
 RUN pip3 install rise/
 
 
 EXPOSE 5000
 
-ENTRYPOINT ["python"]
-CMD ["app.py"]
+
+CMD supervisord -c /etc/supervisor.conf && python app.py

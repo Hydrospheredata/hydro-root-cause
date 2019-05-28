@@ -2,9 +2,16 @@ version: '3'
 services:
   web:
     build: .
+    depends_on:
+      - mongo
+      - redis
     ports:
      - "5000:5000"
   redis:
     image: "redis"
+    expose:
+      - "6379"
   mongo:
     image: "mongo"
+    expose:
+      - "27017"
