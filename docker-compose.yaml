@@ -1,0 +1,23 @@
+version: '3'
+services:
+  web:
+    build: .
+    command: python app.py
+    env_file:
+      - .env
+    depends_on:
+      - mongo
+      - worker
+    ports:
+      - "5000:5000"
+  worker:
+    build: .
+    command: celery -A app.celery worker
+    env_file:
+      - .env
+    depends_on:
+      - mongo
+  mongo:
+    image: "mongo"
+    expose:
+      - "27017"

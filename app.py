@@ -1,27 +1,95 @@
+import datetime
+import os
 import time
 from functools import partial
 from typing import Dict, List
 
+from bson import objectid
 import numpy as np
 import pandas as pd
 import requests
-from flask import Flask, request, jsonify
+from anchor2 import TabularExplainer
+from celery import Celery
+from flask import Flask, request, jsonify, url_for
 from hydro_serving_grpc.timemachine import ReqstoreClient
-
-from anchor2.anchor2 import TabularExplainer
-from rise.rise import RiseImageExplainer
 from jsonschema import validate
+from pymongo import MongoClient
+from pymongo.database import Database
+
+from rise.rise import RiseImageExplainer
+
+REQSTORE_URL = os.getenv("REQSTORE_URL")
+SERVING_URL = os.getenv("SERVING_URL", "http://fc13d681.serving.odsc.k8s.hydrosphere.io")
+MONGO_URL = os.getenv("MONGO_URL", "mongo")
+MONGO_PORT = int(os.getenv("MONGO_PORT", 27017))
+
+mongo_client = MongoClient(host=MONGO_URL, port=MONGO_PORT)
+db = mongo_client['root_cause']
 
 app = Flask(__name__)
+app.config['CELERY_BROKER_URL'] = f"mongodb://{MONGO_URL}:{MONGO_PORT}/celery_broker'"
+app.config['CELERY_RESULT_BACKEND'] = f"mongodb://{MONGO_URL}:{MONGO_PORT}/celery_backend"
+
+celery = Celery(app.name, broker=app.config['CELERY_BROKER_URL'])
+celery.conf.update(app.config)
 
 
 @app.route("/")
 def hello():
-    return "Hello!"
+    return "hydro_root_cause_service"
+
+
+@app.route('/status/<method>/<task_id>', methods=["GET"])
+def task_status(task_id, method):
+    if method == "rise":
+        task = rise_task.AsyncResult(task_id)
+    elif method == "anchor":
+        task = anchor_task.AsyncResult(task_id)
+    else:
+        raise ValueError
+
+    response = {
+        'state': task.state,
+    }
+    if task.state == 'PENDING':
+        # job did not start yet, do nothing
+        pass
+    elif task.state == 'SUCCESS':
+        # job completed, return url to result
+        response['result'] = url_for('fetch_result', _external=True, result_id=str(task.result), method=method)
+
+    elif task.state == "STARTED":
+        # job is in progress, return progress
+        response['progress'] = task.info['progress']
+
+    else:
+        # something went wrong in the background job, return the exception raised
+        response['status'] = str(task.info),
+
+    return jsonify(response)
+
+
+@app.route('/fetch_result/<method>/<result_id>', methods=["GET"])
+def fetch_result(result_id, method):
+    if method == "rise":
+        collection = db.rise_explanations
+    elif method == "anchor":
+        collection = db.anchor_explanations
+    else:
+        raise ValueError
+
+    explanation = collection.find_one({"_id": objectid.ObjectId(result_id)})
+    del explanation['_id']
+
+    if method == "rise":
+        explanation['result']['masks'] = str(explanation['result']['masks'])
+
+    return jsonify(explanation)
 
 
 # Function to store sample in a json with columnar signature
 def make_columnar_json(sample, feature_names):
+    # TODO remove columnar json to row-based json
     output_json = {}
     if type(sample) == pd.Series:
         feature_names = sample.index
@@ -34,7 +102,13 @@ def make_columnar_json(sample, feature_names):
     return output_json
 
 
-def get_data_from_reqstore(application_id, reqstore_url="dev.k8s.hydrosphere.io:443"):
+def get_application_id(application_name: str):
+    r = requests.get(f"{SERVING_URL}/api/v2/application/{application_name}")
+    return r.json()['executionGraph']['stages'][0]['modelVariants'][0]['modelVersion']["id"]
+
+
+def get_data_from_reqstore(application_name):
+    # TODO change to subsampling Dima
     def request_to_df(r):
         columns = []
         values = []
@@ -43,8 +117,9 @@ def get_data_from_reqstore(application_id, reqstore_url="dev.k8s.hydrosphere.io:
             values.append(value.int64_val)
         return pd.DataFrame(columns=columns, data=np.array(values).T)
 
-    client = ReqstoreClient(reqstore_url, False)
+    client = ReqstoreClient(REQSTORE_URL, False)
     end_time = round(time.time() * 1000000000)
+    application_id = get_application_id(application_name)
     data = client.getRange(0, end_time, application_id)
     data = list(data)
 
@@ -61,19 +136,30 @@ def get_data_from_reqstore(application_id, reqstore_url="dev.k8s.hydrosphere.io:
     return df
 
 
-def get_application_id(application_name: str):
-    service_link = "https://dev.k8s.hydrosphere.io/api/v2/application/"
-    r = requests.get(service_link + application_name)
-    return r.json()['executionGraph']['stages'][0]['modelVariants'][0]['modelVersion']["id"]
-
-
-def hydroserving_classifier_call(x, feature_names, application_name,
-                                 service_link="https://dev.k8s.hydrosphere.io/gateway/application/",
-                                 return_label="Prediction"):
-    response = requests.post(url=service_link + application_name, json=make_columnar_json(x, feature_names=feature_names))
+def hydroserving_classifier_call(x, feature_names, application_name, return_label="Prediction"):
+    # TODO change to dirka Bulata
+    response = requests.post(url=f"{SERVING_URL}/gateway/application/{application_name}",
+                             json=make_columnar_json(x, feature_names=feature_names))
     predicted_label = np.array(response.json()[return_label])
     return predicted_label
 
+
+def hydroserving_image_classifier_call(x, application_name):
+    # TODO change to dirka Bulata
+    url = f"{SERVING_URL}/gateway/application/{application_name}"
+    response = requests.post(url=url, json={"imgs": x.tolist()})
+    try:
+        predicted_probas = np.array(response.json()["probabilities"])
+        return predicted_probas
+    except KeyError:
+        print("Probabilities not found", response.text)
+        raise ValueError
+    except ValueError:
+        print(response.text)
+        raise ValueError
+
+
+# ----------------------------------------ANCHOR---------------------------------------- #
 
 anchor_schema = {
     "type": "object",
@@ -93,43 +179,71 @@ anchor_schema = {
 
 @app.route("/anchor", methods=['POST'])
 def anchor():
+    #  TODO if mongo anchor cache is available we can check anchor presence by binary mask
+    #  ex: db.collection.save({ _id: 1, a: 54, binaryValueofA: "00110110" })
+    #  ex: db.collection.find( { a: { $bitsAllSet: [ 1, 5 ] } } )
+
     inp_json = request.get_json()
     validate(inp_json, anchor_schema)
-    application_id = get_application_id(inp_json['application_name'])
-    anchor_config = inp_json['config']
-    data = get_data_from_reqstore(str(application_id))
-    print("DATA SHAPE ", data.shape)
 
-    label_decoders: Dict[int, List[str]] = dict([(int(k), v) for (k, v) in anchor_config['label_decoders'].items()])
+    inp_json['created_at'] = datetime.datetime.now()
+
+    anchor_explanation_id = db.anchor_explanations.insert_one(inp_json).inserted_id
+    task = anchor_task.delay(str(anchor_explanation_id))
+
+    return jsonify({}), 202, {'Location': url_for('task_status', task_id=task.id, method="anchor")}
+
+
+@celery.task(bind=True)
+def anchor_task(explanation_id: str):
+    # Shadows names from flask server scope to prevent problems with forks
+    mongo_client: MongoClient = MongoClient(host=MONGO_URL, port=MONGO_PORT)
+    db: Database = mongo_client['root_cause']
+
+    explanation_id = objectid.ObjectId(explanation_id)
+    job_json = db.anchor_explanations.find_one_and_update({"_id": explanation_id},
+                                                          {"$set": {"started_at": datetime.datetime.now()}})
+
+    if 'result' in job_json:
+        return job_json['results']
+
+    application_name = job_json['application_name']
+    config = job_json['config']
+    x = np.array(job_json['explained_instance'])
+
+    # Convert config dicts to appropriate types
+    label_decoders: Dict[int, List[str]] = dict([(int(k), v) for (k, v) in config['label_decoders'].items()])
     oh_encoded_categories: Dict[str, List[int]] = dict(
-        [(k, [int(v) for v in vs]) for (k, vs) in anchor_config['oh_encoded_categories'].items()])
+        [(k, [int(v) for v in vs]) for (k, vs) in config['oh_encoded_categories'].items()])
 
     anchor_explainer = TabularExplainer()
-    data = data.loc[:, anchor_config['feature_names']]  # Sort columns according to feature names order
+
+    data = get_data_from_reqstore(application_name)
+    data = data.loc[:, config['feature_names']]  # Sort columns according to feature names order
+
     anchor_explainer.fit(data=data,
                          label_decoders=label_decoders,
-                         ordinal_features_idx=anchor_config['ordinal_features_idx'],
+                         ordinal_features_idx=config['ordinal_features_idx'],
                          oh_encoded_categories=oh_encoded_categories,
-                         feature_names=anchor_config['feature_names'])
-
-    x = np.array(request.get_json()['explained_instance'])
+                         feature_names=config['feature_names'])
 
     classifier_fn = partial(hydroserving_classifier_call,
-                            feature_names=anchor_config['feature_names'],
-                            application_name=inp_json['application_name'])
+                            feature_names=config['feature_names'],
+                            application_name=application_name)
 
     explanation = anchor_explainer.explain(x, classifier_fn=classifier_fn)
 
-    return jsonify(explanation=str(explanation), coverage=explanation.coverage(), precision=explanation.precision())
+    result_json = {"explanation": str(explanation),
+                   "coverage": explanation.coverage(),
+                   "precision": explanation.precision()}
+
+    db.anchor_explanations.update_one({"_id": explanation_id}, {"$set": {'result': result_json,
+                                                                         "completed_at": datetime.datetime.now()}})
+
+    return str(explanation_id)
 
 
-def hydroserving_image_classifier_call(x,
-                                       application_name,
-                                       service_link="https://dev.k8s.hydrosphere.io/gateway/application/"):
-    url = service_link + application_name
-    response = requests.post(url=url, json={"imgs": x.tolist()})
-    predicted_probas = np.array(response.json()["probabilities"])
-    return predicted_probas
+# ----------------------------------------RISE---------------------------------------- #
 
 
 rise_schema = {
@@ -153,12 +267,33 @@ rise_schema = {
 def rise():
     inp_json = request.get_json()
     validate(inp_json, rise_schema)
-    rise_config = inp_json['config']
+    inp_json['created_at'] = datetime.datetime.now()
+
+    rise_explanation_id = db.rise_explanations.insert_one(inp_json).inserted_id
+    task = rise_task.delay(str(rise_explanation_id))
+
+    return jsonify({}), 202, {'Location': url_for('task_status', task_id=task.id, method="rise")}
+
+
+@celery.task(bind=True)
+def rise_task(self, explanation_id: str):
+    # Shadows names from flask server scope to prevent problems with forks
+    mongo_client: MongoClient = MongoClient(host=MONGO_URL, port=MONGO_PORT)
+    db: Database = mongo_client['root_cause']
+
+    explanation_id = objectid.ObjectId(explanation_id)
+    job_json = db.rise_explanations.find_one_and_update({"_id": explanation_id},
+                                                        {"$set": {"started_at": datetime.datetime.now()}})
+
+    if 'result' in job_json:
+        return job_json['results']
+
+    application_name = job_json['application_name']
+    rise_config = job_json['config']
+    image = np.array(job_json['image'])
+
     rise_explainer = RiseImageExplainer()
-
-    prediction_fn = partial(hydroserving_image_classifier_call,
-                            application_name=inp_json['application_name'])
-
+    prediction_fn = partial(hydroserving_image_classifier_call, application_name=application_name)
     rise_explainer.fit(prediction_fn=prediction_fn,
                        input_size=rise_config['input_size'],
                        number_of_masks=rise_config['number_of_masks'],
@@ -166,11 +301,18 @@ def rise():
                        mask_density=rise_config['mask_density'],
                        single_channel=rise_config['single_channel'])
 
-    image = request.get_json()['image']
-    image = np.array(image)
+    def state_updater(x):
+        self.update_state(state='STARTED', meta={'progress': x})
 
-    saliency_map = rise_explainer.explain(image)
-    return jsonify(saliency_map.tolist())
+    saliency_map: np.array = rise_explainer.explain(image,
+                                                    state_updater=state_updater)
+
+    result_json = {"masks": saliency_map.tolist()}
+
+    db.rise_explanations.update_one({"_id": explanation_id}, {"$set": {'result': result_json,
+                                                                       "completed_at": datetime.datetime.now()}})
+
+    return str(explanation_id)
 
 
 if __name__ == "__main__":

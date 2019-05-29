@@ -86,9 +86,11 @@ class RiseImageExplainer:
 
         return masks
 
-    def explain(self, x, batch_size=20) -> np.array:
+    def explain(self, x, batch_size=20, state_updater=None) -> np.array:
         """
         Multiply df by different masks and look at the prediction results.
+        :param state_updater: function which is called with progress in [0, 1]
+        to propagate this progress feedback somewhere
         :param batch_size:
         :param x: Image represented as an np.array of shape (input_size[0], input_size[1], 3)
         :return: Array which contains sailency maps for each class. [Class_id -> Saliency map]
@@ -96,9 +98,14 @@ class RiseImageExplainer:
         predictions = []
         # Make sure multiplication is being done for correct axes
         masked = x * self.masks
-        for i in tqdm(range(0, self.number_of_masks, batch_size), desc = "Calculating saliency maps"):
+        for i in tqdm(range(0, self.number_of_masks, batch_size), desc="Calculating saliency maps"):
             masked_x = masked[i:min(i + batch_size, self.number_of_masks)]
             predictions.append(self.prediction_fn(masked_x))
+
+            # Propagate feedback about state
+            if state_updater and i + batch_size < self.number_of_masks:
+                state_updater((i + batch_size) / self.number_of_masks)
+
         predictions = np.concatenate(predictions)
         saliency_map = predictions.T.dot(self.masks.reshape(self.number_of_masks, -1)).reshape(-1, *self.input_size)
         saliency_map = saliency_map / self.number_of_masks / self.mask_density

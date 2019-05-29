@@ -28,8 +28,6 @@
 
 ### JupyterNotebook ###
 .ipynb_checkpoints
-*/.ipynb_checkpoints/*
-
 # Remove previous ipynb_checkpoints
 #   git rm -r .ipynb_checkpoints/
 #
@@ -75,7 +73,6 @@ Temporary Items
 # Reference: https://intellij-support.jetbrains.com/hc/en-us/articles/206544839
 
 # User-specific stuff
-.idea/**/workspace.xml
 .idea/**/tasks.xml
 .idea/**/usage.statistics.xml
 .idea/**/dictionaries
@@ -244,14 +241,6 @@ celerybeat-schedule
 # SageMath parsed files
 *.sage.py
 
-# Environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
 
 # Spyder project settings
 .spyderproject
@@ -303,3 +292,4 @@ $RECYCLE.BIN/
 
 # Remove servables' metadata
 /**/.hs
+rise/examples/mobilenetv2-servable/

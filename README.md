@@ -1,6 +1,12 @@
 ## Anchor. Tabular data
+```
+docker run -d --name mongodb bitnami/mongodb:latest
+```
+
+## Methods
 `POST /anchor`
 
+json config:
 ```
 adult_anchor_config = {
   "precision_threshold": 0.95,

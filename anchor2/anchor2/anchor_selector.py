@@ -248,7 +248,7 @@ class BeamAnchorSearch(AnchorSelectionStrategy):
             mean_precision, mean_coverage = np.mean(metrics, axis=0)
             logger.info(f"Mean precision == {mean_precision:.3f}")
 
-        # Select best anchor by maximum coverage among all anchors which satisfy precision threshold
+        # Select besrefact anchor by maximum coverage among all anchors which satisfy precision threshold
         satisfactory_anchors_mask = metrics[:, 0] >= precision_threshold
         satisfactory_anchors = list(compress(anchors, satisfactory_anchors_mask))
         metrics = metrics[satisfactory_anchors_mask]
