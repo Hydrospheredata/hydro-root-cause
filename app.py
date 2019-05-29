@@ -46,33 +46,45 @@ def task_status(task_id, method):
     elif method == "anchor":
         task = anchor_task.AsyncResult(task_id)
     else:
-        raise NotImplementedError
+        raise ValueError
 
+    response = {
+        'state': task.state,
+    }
     if task.state == 'PENDING':
-        # job did not start yet
-        response = {
-            'state': "PENDING",
-        }
+        # job did not start yet, do nothing
+        pass
     elif task.state == 'SUCCESS':
-        # job completed
-        response = {
-            'state': task.state,
-            'result': task.result
-        }
+        # job completed, return url to result
+        response['result'] = url_for('fetch_result', _external=True, result_id=str(task.result), method=method)
+
     elif task.state == "STARTED":
-        # job is in progress
-        response = {
-            'state': task.state,
-            'progress': task.info['progress']
-        }
+        # job is in progress, return progress
+        response['progress'] = task.info['progress']
+
     else:
-        # something went wrong in the background job
-        response = {
-            'state': task.state,
-            'status': str(task.info),  # this is the exception raised
-        }
+        # something went wrong in the background job, return the exception raised
+        response['status'] = str(task.info),
 
     return jsonify(response)
+
+
+@app.route('/fetch_result/<method>/<result_id>', methods=["GET"])
+def fetch_result(result_id, method):
+    if method == "rise":
+        collection = db.rise_explanations
+    elif method == "anchor":
+        collection = db.anchor_explanations
+    else:
+        raise ValueError
+
+    explanation = collection.find_one({"_id": objectid.ObjectId(result_id)})
+    del explanation['_id']
+
+    if method == "rise":
+        explanation['result']['masks'] = str(explanation['result']['masks'])
+
+    return jsonify(explanation)
 
 
 # Function to store sample in a json with columnar signature
