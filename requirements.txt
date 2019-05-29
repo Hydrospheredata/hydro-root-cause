@@ -12,5 +12,5 @@ grpcio-tools
 hydro-serving-grpc
 python-dotenv
 pymongo
-celery[redis]
+celery[mongodb]
 supervisor

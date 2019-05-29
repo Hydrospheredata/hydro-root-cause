@@ -10,7 +10,6 @@ import pandas as pd
 import requests
 from anchor2 import TabularExplainer
 from celery import Celery
-from dotenv import load_dotenv
 from flask import Flask, request, jsonify, url_for
 from hydro_serving_grpc.timemachine import ReqstoreClient
 from jsonschema import validate
@@ -19,20 +18,17 @@ from pymongo.database import Database
 
 from rise.rise import RiseImageExplainer
 
-load_dotenv()
 REQSTORE_URL = os.getenv("REQSTORE_URL")
 SERVING_URL = os.getenv("SERVING_URL", "http://fc13d681.serving.odsc.k8s.hydrosphere.io")
 MONGO_URL = os.getenv("MONGO_URL", "mongo")
 MONGO_PORT = int(os.getenv("MONGO_PORT", 27017))
-REDIS_URL = os.getenv("REDIS_URL", "redis")
-REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 
 mongo_client = MongoClient(host=MONGO_URL, port=MONGO_PORT)
 db = mongo_client['root_cause']
 
 app = Flask(__name__)
-app.config['CELERY_BROKER_URL'] = f"redis://{REDIS_URL}:{REDIS_PORT}/0"
-app.config['CELERY_RESULT_BACKEND'] = f"redis://{REDIS_URL}:{REDIS_PORT}/0"
+app.config['CELERY_BROKER_URL'] = f"mongodb://{MONGO_URL}:{MONGO_PORT}/celery_broker'"
+app.config['CELERY_RESULT_BACKEND'] = f"mongodb://{MONGO_URL}:{MONGO_PORT}/celery_backend"
 
 celery = Celery(app.name, broker=app.config['CELERY_BROKER_URL'])
 celery.conf.update(app.config)
@@ -139,7 +135,6 @@ def hydroserving_classifier_call(x, feature_names, application_name, return_labe
 def hydroserving_image_classifier_call(x, application_name):
     # TODO change to dirka Bulata
     url = f"{SERVING_URL}/gateway/application/{application_name}"
-    print(url)
     response = requests.post(url=url, json={"imgs": x.tolist()})
     try:
         predicted_probas = np.array(response.json()["probabilities"])

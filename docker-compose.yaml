@@ -3,22 +3,20 @@ services:
   web:
     build: .
     command: python app.py
+    env_file:
+      - .env
     depends_on:
       - mongo
-      - redis
       - worker
     ports:
-     - "5000:5000"
+      - "5000:5000"
   worker:
     build: .
     command: celery -A app.celery worker
+    env_file:
+      - .env
     depends_on:
       - mongo
-      - redis
-  redis:
-    image: "redis"
-    expose:
-      - "6379"
   mongo:
     image: "mongo"
     ports:
