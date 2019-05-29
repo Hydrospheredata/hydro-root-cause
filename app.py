@@ -307,8 +307,7 @@ def rise_task(self, explanation_id: str):
     saliency_map: np.array = rise_explainer.explain(image,
                                                     state_updater=state_updater)
 
-    result_json = {"masks": saliency_map.tostring(),
-                   "shape": saliency_map.shape}
+    result_json = {"masks": saliency_map.tolist()}
 
     db.rise_explanations.update_one({"_id": explanation_id}, {"$set": {'result': result_json,
                                                                        "completed_at": datetime.datetime.now()}})
