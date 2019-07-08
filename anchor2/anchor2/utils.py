@@ -19,7 +19,7 @@ class DiscretizerTransformer:
         """
         :param data: pd.Dataframe or np.array
         :param ordinal_indices: Indices of columns with ordinal data
-        :param oh_encoded_categories: Map from column name to list of oh-encoded columns
+        :param oh_encoded_categories: Map from column model_name to list of oh-encoded columns
         :return: self
         """
         self.ordinal_indices: List[int] = ordinal_indices

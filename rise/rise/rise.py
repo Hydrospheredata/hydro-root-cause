@@ -28,7 +28,7 @@ class RiseImageExplainer:
         :param prediction_fn: function which takes np.array with shape (batch_size, input_size[0], input_size[1], 3)
          and returns predicted labels. In most cases this will be `model.predict` method.
         :param input_size: Tuple with image width and height in pixels
-        :param class_names: Mapping from class_id to class name. class_id has to be the result type of prediction_fn
+        :param class_names: Mapping from class_id to class model_name. class_id has to be the result type of prediction_fn
         :param number_of_masks: Number of masks generated and evaluated by the explainer
         :param mask_granularity: Parameter specifies how many cells will be in one masks. Mask is a [mask_granularity df mask_granularity]
         grid.

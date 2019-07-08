@@ -1,5 +1,5 @@
 kind: Model
-name: "adult-salary-prediction"
+name: "adult-columnar"
 payload:
   - "src/"
   - "requirements.txt"

@@ -7,7 +7,7 @@ module.exports = {
            },
     output: {
         path: __dirname,
-        filename: '[name].js',
+        filename: '[model_name].js',
         library: 'lime'
     },
     module: {

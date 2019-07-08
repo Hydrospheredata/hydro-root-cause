@@ -4,6 +4,7 @@ import numpy as np
 
 
 clf = load('/model/files/random-forest-adult.joblib')
+
 features = ['Age', 'Workclass', 'Education', 'Marital Status', 'Occupation',
             'Relationship', 'Race', 'Sex', 'Capital Gain', 'Capital Loss',
             'Hours per week', 'Country']

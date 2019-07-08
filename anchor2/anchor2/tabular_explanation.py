@@ -213,7 +213,7 @@ class TabularPredicate(Predicate):
 
     def __eq__(self, other):
         if isinstance(other, self.__class__):
-            # Feature name is deliberately not considered in equation check
+            # Feature model_name is deliberately not considered in equation check
             return self.value == other.value and self.feature_id == other.feature_id
         else:
             return False

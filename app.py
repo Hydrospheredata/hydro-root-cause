@@ -1,21 +1,18 @@
 import datetime
 import os
-import time
 from functools import partial
 from typing import Dict, List
 
-from bson import objectid
 import numpy as np
-import pandas as pd
-import requests
-from anchor2 import TabularExplainer
+from bson import objectid
 from celery import Celery
 from flask import Flask, request, jsonify, url_for
-from hydro_serving_grpc.timemachine import ReqstoreClient
 from jsonschema import validate
 from pymongo import MongoClient
 from pymongo.database import Database
 
+import utils
+from anchor2 import TabularExplainer
 from rise.rise import RiseImageExplainer
 
 REQSTORE_URL = os.getenv("REQSTORE_URL")
@@ -87,94 +84,16 @@ def fetch_result(result_id, method):
     return jsonify(explanation)
 
 
-# Function to store sample in a json with columnar signature
-def make_columnar_json(sample, feature_names):
-    # TODO remove columnar json to row-based json
-    output_json = {}
-    if type(sample) == pd.Series:
-        feature_names = sample.index
-        sample = sample.values
-    elif feature_names is None:
-        raise ValueError
-
-    for feature_idx, fname in enumerate(feature_names):
-        output_json[fname] = [int(v) for v in sample[:, feature_idx]]
-    return output_json
-
-
-def get_application_id(application_name: str):
-    r = requests.get(f"{SERVING_URL}/api/v2/application/{application_name}")
-    return r.json()['executionGraph']['stages'][0]['modelVariants'][0]['modelVersion']["id"]
-
-
-def get_data_from_reqstore(application_name):
-    # TODO change to subsampling Dima
-    def request_to_df(r):
-        columns = []
-        values = []
-        for key, value in r.inputs.items():
-            columns.append(key)
-            values.append(value.int64_val)
-        return pd.DataFrame(columns=columns, data=np.array(values).T)
-
-    client = ReqstoreClient(REQSTORE_URL, False)
-    end_time = round(time.time() * 1000000000)
-    application_id = get_application_id(application_name)
-    data = client.getRange(0, end_time, application_id)
-    data = list(data)
-
-    rs = list(map(lambda x: x.entries[0].request, data))
-    rs = [request_to_df(r) for r in rs]
-
-    df = pd.concat(rs, sort=False)
-
-    # Remove [1, 1, 1, ...] which results from UI test model calls
-    df = df.loc[~np.all(df == np.array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]), axis=1)]
-    df.dropna(inplace=True)
-    df.drop_duplicates(inplace=True)
-
-    return df
-
-
-def hydroserving_classifier_call(x, feature_names, application_name, return_label="Prediction"):
-    # TODO change to dirka Bulata
-    response = requests.post(url=f"{SERVING_URL}/gateway/application/{application_name}",
-                             json=make_columnar_json(x, feature_names=feature_names))
-    predicted_label = np.array(response.json()[return_label])
-    return predicted_label
-
-
-def hydroserving_image_classifier_call(x, application_name):
-    # TODO change to dirka Bulata
-    url = f"{SERVING_URL}/gateway/application/{application_name}"
-    response = requests.post(url=url, json={"imgs": x.tolist()})
-    try:
-        predicted_probas = np.array(response.json()["probabilities"])
-        return predicted_probas
-    except KeyError:
-        print("Probabilities not found", response.text)
-        raise ValueError
-    except ValueError:
-        print(response.text)
-        raise ValueError
+root_cause_schema = {
+    "type": "object",
+    "properties": {
+        "servable_name": {"type": "string"},
+        "explained_instance": {"type": "object"}
+    },
+}
 
 
 # ----------------------------------------ANCHOR---------------------------------------- #
-
-anchor_schema = {
-    "type": "object",
-    "properties": {
-        "application_name": {"type": "string"},
-        "config": {"type": "object",
-                   "properties": {
-                       "feature_names": {"type": "array"},
-                       "ordinal_features_idx": {"type": "array"},
-                       "label_decoders": {"type": "object"},
-                       "oh_encoded_categories": {"type": "object"},
-                   }
-                   },
-    },
-}
 
 
 @app.route("/anchor", methods=['POST'])
@@ -184,7 +103,7 @@ def anchor():
     #  ex: db.collection.find( { a: { $bitsAllSet: [ 1, 5 ] } } )
 
     inp_json = request.get_json()
-    validate(inp_json, anchor_schema)
+    validate(inp_json, root_cause_schema)
 
     inp_json['created_at'] = datetime.datetime.now()
 
@@ -207,18 +126,23 @@ def anchor_task(explanation_id: str):
     if 'result' in job_json:
         return job_json['results']
 
+    # TODO deploy servable
+
     application_name = job_json['application_name']
     config = job_json['config']
     x = np.array(job_json['explained_instance'])
 
     # Convert config dicts to appropriate types
-    label_decoders: Dict[int, List[str]] = dict([(int(k), v) for (k, v) in config['label_decoders'].items()])
-    oh_encoded_categories: Dict[str, List[int]] = dict(
-        [(k, [int(v) for v in vs]) for (k, vs) in config['oh_encoded_categories'].items()])
+    # label_decoders: Dict[int, List[str]] = dict([(int(k), v) for (k, v) in config['label_decoders'].items()])
+    label_decoders: Dict[int, List[str]] = dict()
+
+    # oh_encoded_categories: Dict[str, List[int]] = dict(
+    #     [(k, [int(v) for v in vs]) for (k, vs) in config['oh_encoded_categories'].items()])
+    oh_encoded_categories: Dict[str, List[int]] = dict()
 
     anchor_explainer = TabularExplainer()
 
-    data = get_data_from_reqstore(application_name)
+    data = utils.get_data_from_reqstore(application_name)
     data = data.loc[:, config['feature_names']]  # Sort columns according to feature names order
 
     anchor_explainer.fit(data=data,
@@ -227,7 +151,7 @@ def anchor_task(explanation_id: str):
                          oh_encoded_categories=oh_encoded_categories,
                          feature_names=config['feature_names'])
 
-    classifier_fn = partial(hydroserving_classifier_call,
+    classifier_fn = partial(utils.hs_call,
                             feature_names=config['feature_names'],
                             application_name=application_name)
 
@@ -246,27 +170,10 @@ def anchor_task(explanation_id: str):
 # ----------------------------------------RISE---------------------------------------- #
 
 
-rise_schema = {
-    "type": "object",
-    "properties": {
-        "application_name": {"type": "string"},
-        "config": {"type": "object",
-                   "properties": {
-                       "input_size": {"type": "array"},
-                       "number_of_masks": {"type": "number"},
-                       "mask_granularity": {"type": "number"},
-                       "mask_density": {"type": "number"},
-                       "single_channel": {"type": "boolean"},
-                   }
-                   },
-    },
-}
-
-
 @app.route("/rise", methods=['POST'])
 def rise():
     inp_json = request.get_json()
-    validate(inp_json, rise_schema)
+    validate(inp_json, root_cause_schema)
     inp_json['created_at'] = datetime.datetime.now()
 
     rise_explanation_id = db.rise_explanations.insert_one(inp_json).inserted_id
@@ -288,12 +195,20 @@ def rise_task(self, explanation_id: str):
     if 'result' in job_json:
         return job_json['results']
 
+    # TODO deploy servable
+
     application_name = job_json['application_name']
-    rise_config = job_json['config']
-    image = np.array(job_json['image'])
+    image = np.array(job_json['explained_instance'])
+
+    input_dims = (28, 28)  # TODO get input size from contract
+    rise_config = {"input_size": input_dims,
+                   "number_of_masks": 1000,
+                   "mask_granularity": 0.3,
+                   "mask_density": 0.5,
+                   "single_channel": False}
 
     rise_explainer = RiseImageExplainer()
-    prediction_fn = partial(hydroserving_image_classifier_call, application_name=application_name)
+    prediction_fn = partial(utils.hs_img_call, application_name=application_name)
     rise_explainer.fit(prediction_fn=prediction_fn,
                        input_size=rise_config['input_size'],
                        number_of_masks=rise_config['number_of_masks'],
