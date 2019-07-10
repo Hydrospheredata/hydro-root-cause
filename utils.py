@@ -1,27 +1,3 @@
-import time
-from typing import Union
-
-import hydro_serving_grpc as hs
-import numpy as np
-import pandas as pd
-import requests
-import os
-import grpc
-
-from google.protobuf.json_format import MessageToDict
-from hydro_serving_grpc import manager as hsm
-from hydro_serving_grpc.timemachine import ReqstoreClient
-
-# REQSTORE_URL = os.getenv("REQSTORE_URL")
-# REQSTORE_PORT = os.getenv("REQSTORE_PORT")
-#
-# SERVING_URL = os.getenv("SERVING_URL", "http://fc13d681.serving.odsc.k8s.hydrosphere.io")
-# SERVING_NOSONAR_PORT = os.getenv("SERVING_NOSONAR_PORT", 9090)
-#
-# channel = grpc.insecure_channel(f'{SERVING_URL}:{SERVING_NOSONAR_PORT}')
-# hsg_client = hs.gateway.GatewayServiceStub(channel)
-
-#
 # def check_tabular_contract(model_name: str):
 #     model_id = get_application_id(model_name)
 #     # __model_spec.version.value = 1

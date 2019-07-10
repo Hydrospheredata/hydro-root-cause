@@ -68,14 +68,16 @@ class HydroServingClient:
         Instantiate servable from model version
         :param model_name:
         :param model_version:
-        :return: servable proto
+        :return: HydroServingServable
         """
         model_version_id = hs_grpc.manager.ModelVersionIdentifier(name=model_name, version=model_version)
         deploy_request = hs_grpc.manager.DeployServableRequest(fullname=model_version_id)
+
         for s in self.__manager_stub.DeployServable(deploy_request):
             servable_status = s.status
             logger.info(f"{s.name} is {ServableStatus(servable_status)}")
-        return s
+
+        return HydroServingServable(s.name, s.model_version, self)
 
     def remove_servable(self, servable_name):
         remove_request = hs_grpc.manager.RemoveServableRequest(servable_name=servable_name)

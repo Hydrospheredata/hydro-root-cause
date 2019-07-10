@@ -13,22 +13,36 @@ from pymongo.database import Database
 
 import utils
 from anchor2 import TabularExplainer
+from client import HydroServingClient, HydroServingServable
 from rise.rise import RiseImageExplainer
+from hydro_serving_grpc.reqstore import reqstore_client
+import pandas as pd
 
-REQSTORE_URL = os.getenv("REQSTORE_URL")
-SERVING_URL = os.getenv("SERVING_URL", "http://fc13d681.serving.odsc.k8s.hydrosphere.io")
-MONGO_URL = os.getenv("MONGO_URL", "mongo")
+from loguru import logger
+
+REQSTORE_URL = os.getenv("REQSTORE_URL", "managerui:9090")
+SERVING_URL = os.getenv("SERVING_URL", "managerui:9090")
+
+MONGO_URL = os.getenv("MONGO_URL", "mongodb")
 MONGO_PORT = int(os.getenv("MONGO_PORT", 27017))
 
 mongo_client = MongoClient(host=MONGO_URL, port=MONGO_PORT)
 db = mongo_client['root_cause']
 
+hs_client = HydroServingClient(SERVING_URL)
+rs_client = reqstore_client.ReqstoreClient(REQSTORE_URL, insecure=True)
+
 app = Flask(__name__)
 app.config['CELERY_BROKER_URL'] = f"mongodb://{MONGO_URL}:{MONGO_PORT}/celery_broker'"
 app.config['CELERY_RESULT_BACKEND'] = f"mongodb://{MONGO_URL}:{MONGO_PORT}/celery_backend"
 
-celery = Celery(app.name, broker=app.config['CELERY_BROKER_URL'])
+celery = Celery(app.name,
+                broker=app.config['CELERY_BROKER_URL'],
+                backend=app.config['CELERY_RESULT_BACKEND'])
 celery.conf.update(app.config)
+
+print(SERVING_URL)
+s = hs_client.deploy_servable("adult-columnar")
 
 
 @app.route("/")
@@ -84,17 +98,7 @@ def fetch_result(result_id, method):
     return jsonify(explanation)
 
 
-root_cause_schema = {
-    "type": "object",
-    "properties": {
-        "servable_name": {"type": "string"},
-        "explained_instance": {"type": "object"}
-    },
-}
-
-
 # ----------------------------------------ANCHOR---------------------------------------- #
-
 
 @app.route("/anchor", methods=['POST'])
 def anchor():
@@ -103,7 +107,7 @@ def anchor():
     #  ex: db.collection.find( { a: { $bitsAllSet: [ 1, 5 ] } } )
 
     inp_json = request.get_json()
-    validate(inp_json, root_cause_schema)
+    # validate(inp_json, root_cause_schema)
 
     inp_json['created_at'] = datetime.datetime.now()
 
@@ -126,11 +130,14 @@ def anchor_task(explanation_id: str):
     if 'result' in job_json:
         return job_json['results']
 
-    # TODO deploy servable
-
-    application_name = job_json['application_name']
+    model_name = job_json['model']['name']
+    model_version = job_json['model']['version']
+    model_id = job_json['model']['model_id']
     config = job_json['config']
     x = np.array(job_json['explained_instance'])
+
+    # Create temporary servable
+    temp_servable_copy: HydroServingServable = hs_client.deploy_servable(model_name, model_version)
 
     # Convert config dicts to appropriate types
     # label_decoders: Dict[int, List[str]] = dict([(int(k), v) for (k, v) in config['label_decoders'].items()])
@@ -142,20 +149,33 @@ def anchor_task(explanation_id: str):
 
     anchor_explainer = TabularExplainer()
 
-    data = utils.get_data_from_reqstore(application_name)
-    data = data.loc[:, config['feature_names']]  # Sort columns according to feature names order
+    rs_entries = []
+    for r in rs_client.subsampling(model_id, amount=config.get("subsample_size", 500)):
+        rs_entries.extend(r.entries)
 
-    anchor_explainer.fit(data=data,
+    requests = [temp_servable_copy.contract.decode_request(e.request) for e in rs_entries]
+
+    # concat requests into dataframe
+    rs = []
+    feature_order = temp_servable_copy.contract.input_names
+    for r in requests:
+        column_arrays = []
+        for feature_name in feature_order:
+            column_arrays.append(r[feature_name])
+        df = pd.DataFrame(np.hstack(column_arrays), columns=feature_order)
+        rs.append(df)
+    reqstore_data = pd.concat(rs)
+
+    # Sort columns according to feature names order
+    reqstore_data = reqstore_data.loc[:, temp_servable_copy.contract.input_names]
+
+    anchor_explainer.fit(data=reqstore_data,
                          label_decoders=label_decoders,
                          ordinal_features_idx=config['ordinal_features_idx'],
                          oh_encoded_categories=oh_encoded_categories,
-                         feature_names=config['feature_names'])
+                         feature_names=temp_servable_copy.contract.input_names)
 
-    classifier_fn = partial(utils.hs_call,
-                            feature_names=config['feature_names'],
-                            application_name=application_name)
-
-    explanation = anchor_explainer.explain(x, classifier_fn=classifier_fn)
+    explanation = anchor_explainer.explain(x, classifier_fn=temp_servable_copy)
 
     result_json = {"explanation": str(explanation),
                    "coverage": explanation.coverage(),
@@ -163,6 +183,8 @@ def anchor_task(explanation_id: str):
 
     db.anchor_explanations.update_one({"_id": explanation_id}, {"$set": {'result': result_json,
                                                                          "completed_at": datetime.datetime.now()}})
+
+    temp_servable_copy.delete()
 
     return str(explanation_id)
 
@@ -173,7 +195,7 @@ def anchor_task(explanation_id: str):
 @app.route("/rise", methods=['POST'])
 def rise():
     inp_json = request.get_json()
-    validate(inp_json, root_cause_schema)
+    # validate(inp_json, root_cause_schema)
     inp_json['created_at'] = datetime.datetime.now()
 
     rise_explanation_id = db.rise_explanations.insert_one(inp_json).inserted_id
@@ -195,21 +217,39 @@ def rise_task(self, explanation_id: str):
     if 'result' in job_json:
         return job_json['results']
 
-    # TODO deploy servable
+    model_name = job_json['model']['name']
+    model_version = job_json['model']['version']
 
-    application_name = job_json['application_name']
+    # Create temporary servable
+    temp_servable_copy: HydroServingServable = hs_client.deploy_servable(model_name, model_version)
+
     image = np.array(job_json['explained_instance'])
 
-    input_dims = (28, 28)  # TODO get input size from contract
+    if temp_servable_copy.contract.number_of_input_tensors != 1:
+        raise ValueError("Unable to explain multi-tensor image models")
+
+    if 'probabilities' not in temp_servable_copy.contract.output_names:
+        raise ValueError("Model have to return probabilities tensor")
+
+    input_tensor_name = temp_servable_copy.contract.input_names[0]
+
+    input_dims = temp_servable_copy.contract.input_shapes[input_tensor_name]
+    if len(input_dims) == 2:
+        is_single_channel = True
+    elif len(input_dims) == 3:
+        is_single_channel = False
+    else:
+        raise ValueError(f"Unable to explain image models with shape {input_dims}")
+
     rise_config = {"input_size": input_dims,
                    "number_of_masks": 1000,
                    "mask_granularity": 0.3,
                    "mask_density": 0.5,
-                   "single_channel": False}
+                   "single_channel": is_single_channel}
 
     rise_explainer = RiseImageExplainer()
-    prediction_fn = partial(utils.hs_img_call, application_name=application_name)
-    rise_explainer.fit(prediction_fn=prediction_fn,
+
+    rise_explainer.fit(prediction_fn=temp_servable_copy,
                        input_size=rise_config['input_size'],
                        number_of_masks=rise_config['number_of_masks'],
                        mask_granularity=rise_config['mask_granularity'],
@@ -219,14 +259,14 @@ def rise_task(self, explanation_id: str):
     def state_updater(x):
         self.update_state(state='STARTED', meta={'progress': x})
 
-    saliency_map: np.array = rise_explainer.explain(image,
-                                                    state_updater=state_updater)
+    saliency_map: np.array = rise_explainer.explain(image, state_updater=state_updater)
 
     result_json = {"masks": saliency_map.tolist()}
 
     db.rise_explanations.update_one({"_id": explanation_id}, {"$set": {'result': result_json,
                                                                        "completed_at": datetime.datetime.now()}})
 
+    temp_servable_copy.delete()  # Remove temporary servable
     return str(explanation_id)
 
 
