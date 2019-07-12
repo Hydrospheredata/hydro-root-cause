@@ -1,17 +1,25 @@
 import hydro_serving_grpc as hs
 import numpy as np
 from keras.models import load_model
+import tensorflow as tf
 
 
 def extract_value(proto):
     return np.array(proto.double_val, dtype='float64').reshape((-1, 28 * 28))
 
 
+m = load_model("/model/files/model.h5", compile=False)
+
+global graph
+graph = tf.get_default_graph()
+
+
 def predict(**kwargs):
     extracted = extract_value(kwargs['input'])
 
-    m = load_model("/model/files/model.h5", compile=False)
-    probas = m.predict(extracted)
+    with graph.as_default():
+        probas = m.predict(extracted)
+
     classes = probas.argmax(axis=1)
 
     probas_proto = hs.TensorProto(

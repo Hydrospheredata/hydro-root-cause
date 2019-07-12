@@ -1,4 +1,3 @@
-jsonschema
 tqdm
 scikit-learn
 Pillow

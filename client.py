@@ -1,3 +1,4 @@
+from enum import Enum
 from typing import Union, Dict
 
 import grpc
@@ -5,14 +6,11 @@ import hydro_serving_grpc as hs_grpc
 import hydro_serving_grpc.gateway as hsg
 import pandas as pd
 from google.protobuf import empty_pb2
-from google.protobuf.wrappers_pb2 import Int64Value
 from hydro_serving_grpc import manager as hsm
+from loguru import logger
 
 from contract import HSContract, ContractViolationException
 from type_conversions import *
-from enum import Enum
-
-from loguru import logger
 
 
 class HydroServingClient:
@@ -83,21 +81,18 @@ class HydroServingClient:
         remove_request = hs_grpc.manager.RemoveServableRequest(servable_name=servable_name)
         _ = self.__manager_stub.RemoveServable(remove_request)
 
-    def get_reqstore_subsample(self, subsample_size: int, from_ts=None, to_ts=None):
-        pass
-
 
 class HydroServingModel:
     """
-    Instance of model, instantiated from ModelVersion returned by Manager
+    Instance of model, instantiated from ModelVersion returned by Manager. Used only for fetching contract, model_id.
+    Not used for predicting things.
     """
 
     def __init__(self, model_proto, hs_client: HydroServingClient):
         self.version: int = model_proto.version
         self.model_name: str = model_proto.model.name
-        self.__id = model_proto.id
+        self.id = model_proto.id
         self.contract: HSContract = HSContract.from_proto(model_proto)  # make contract
-        self.__model_spec = hs_grpc.ModelSpec(name=self.model_name, version=Int64Value(value=self.version))
         self.__hs_client = hs_client
 
     def __str__(self):
@@ -106,31 +101,20 @@ class HydroServingModel:
     def __repr__(self):
         return f"Model \"{self.model_name}\" v{self.version}"
 
-    def __call__(self,
-                 x: Union[pd.DataFrame, pd.Series, Dict[str, np.array]] = None,
-                 _profile: bool = False, **kwargs) \
-            -> Union[Dict[str, np.array]]:
-        input_dict: Dict[str, np.array] = self.contract.make_input_dict(x, kwargs)
-        is_valid_input, input_error = self.contract.verify_input_dict(input_dict)
-        if not is_valid_input:
-            raise ContractViolationException(str(input_error))
-        input_proto: Dict[str, hs_grpc.TensorProto] = self.contract.make_proto(input_dict)
-        request = hs_grpc.PredictRequest(model_spec=self.__model_spec, inputs=input_proto)
-        result = self.__hs_client._HydroServingClient__prediction_stub.Predict(request)
-        output_dict: Dict = self.contract.decode_response(result)
-        return output_dict
+    def __call__(self, *args, **kwargs):
+        raise NotImplementedError("Prediction through HydroServingModel is not possible. Use HydroServingServable instead")
 
 
 class HydroServingServable:
     """
-    Servable
+    Servable used for making inference calls
     """
 
     def __init__(self, servable_name, model_proto, hs_client: HydroServingClient):
         self.version: int = model_proto.version
         self.servable_name = servable_name
         self.model_name: str = model_proto.model.name
-        self.__id = model_proto.id
+        self.id = model_proto.id
         self.contract: HSContract = HSContract.from_proto(model_proto)  # make contract
         self.__hs_client = hs_client
 

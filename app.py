@@ -7,11 +7,9 @@ import numpy as np
 from bson import objectid
 from celery import Celery
 from flask import Flask, request, jsonify, url_for
-from jsonschema import validate
 from pymongo import MongoClient
 from pymongo.database import Database
 
-import utils
 from anchor2 import TabularExplainer
 from client import HydroServingClient, HydroServingServable
 from rise.rise import RiseImageExplainer
@@ -40,9 +38,6 @@ celery = Celery(app.name,
                 broker=app.config['CELERY_BROKER_URL'],
                 backend=app.config['CELERY_RESULT_BACKEND'])
 celery.conf.update(app.config)
-
-print(SERVING_URL)
-s = hs_client.deploy_servable("adult-columnar")
 
 
 @app.route("/")
@@ -107,7 +102,7 @@ def anchor():
     #  ex: db.collection.find( { a: { $bitsAllSet: [ 1, 5 ] } } )
 
     inp_json = request.get_json()
-    # validate(inp_json, root_cause_schema)
+    logger.info(f"Received request to explain {str(inp_json['model'])} with anchor")
 
     inp_json['created_at'] = datetime.datetime.now()
 
@@ -118,7 +113,7 @@ def anchor():
 
 
 @celery.task(bind=True)
-def anchor_task(explanation_id: str):
+def anchor_task(self, explanation_id: str):
     # Shadows names from flask server scope to prevent problems with forks
     mongo_client: MongoClient = MongoClient(host=MONGO_URL, port=MONGO_PORT)
     db: Database = mongo_client['root_cause']
@@ -132,30 +127,33 @@ def anchor_task(explanation_id: str):
 
     model_name = job_json['model']['name']
     model_version = job_json['model']['version']
-    model_id = job_json['model']['model_id']
-    config = job_json['config']
+    config = job_json.get('config', {})
     x = np.array(job_json['explained_instance'])
 
-    # Create temporary servable
+    logger.info(f"Initiated task to explain {model_name}_{model_version} with anchor")
+
+    # Create temporary servable, so main servable won't be affected
     temp_servable_copy: HydroServingServable = hs_client.deploy_servable(model_name, model_version)
 
     # Convert config dicts to appropriate types
     # label_decoders: Dict[int, List[str]] = dict([(int(k), v) for (k, v) in config['label_decoders'].items()])
-    label_decoders: Dict[int, List[str]] = dict()
+    label_decoders: Dict[int, List[str]] = dict()  # This is a temp workaround, since we can't pass this config through UI
 
     # oh_encoded_categories: Dict[str, List[int]] = dict(
     #     [(k, [int(v) for v in vs]) for (k, vs) in config['oh_encoded_categories'].items()])
-    oh_encoded_categories: Dict[str, List[int]] = dict()
+    oh_encoded_categories: Dict[str, List[int]] = dict()  # This is a temp workaround, since we can't pass this config through UI
 
     anchor_explainer = TabularExplainer()
 
+    # Get subsample to work with
+    model_id = temp_servable_copy.id
     rs_entries = []
-    for r in rs_client.subsampling(model_id, amount=config.get("subsample_size", 500)):
+    for r in rs_client.subsampling(str(model_id), amount=config.get("subsample_size", 5000)):
         rs_entries.extend(r.entries)
 
     requests = [temp_servable_copy.contract.decode_request(e.request) for e in rs_entries]
 
-    # concat requests into dataframe
+    # concat requests into dataframe format
     rs = []
     feature_order = temp_servable_copy.contract.input_names
     for r in requests:
@@ -181,9 +179,13 @@ def anchor_task(explanation_id: str):
                    "coverage": explanation.coverage(),
                    "precision": explanation.precision()}
 
+    # Store explanation in MongoDB 'root_cause' db
     db.anchor_explanations.update_one({"_id": explanation_id}, {"$set": {'result': result_json,
                                                                          "completed_at": datetime.datetime.now()}})
 
+    logger.info(f"Finished task to explain {model_name}_{model_version} with anchor")
+
+    # Remove temporary servable
     temp_servable_copy.delete()
 
     return str(explanation_id)
@@ -195,8 +197,9 @@ def anchor_task(explanation_id: str):
 @app.route("/rise", methods=['POST'])
 def rise():
     inp_json = request.get_json()
-    # validate(inp_json, root_cause_schema)
     inp_json['created_at'] = datetime.datetime.now()
+
+    logger.info(f"Received request to explain {str(inp_json['model'])} with rise")
 
     rise_explanation_id = db.rise_explanations.insert_one(inp_json).inserted_id
     task = rise_task.delay(str(rise_explanation_id))
@@ -220,6 +223,8 @@ def rise_task(self, explanation_id: str):
     model_name = job_json['model']['name']
     model_version = job_json['model']['version']
 
+    logger.info(f"Initiated task to explain {model_name}_{model_version} with rise")
+
     # Create temporary servable
     temp_servable_copy: HydroServingServable = hs_client.deploy_servable(model_name, model_version)
 
@@ -234,6 +239,8 @@ def rise_task(self, explanation_id: str):
     input_tensor_name = temp_servable_copy.contract.input_names[0]
 
     input_dims = temp_servable_copy.contract.input_shapes[input_tensor_name]
+    input_dims = input_dims[1:]  # Remove -1 as batch dim
+
     if len(input_dims) == 2:
         is_single_channel = True
     elif len(input_dims) == 3:
@@ -243,13 +250,15 @@ def rise_task(self, explanation_id: str):
 
     rise_config = {"input_size": input_dims,
                    "number_of_masks": 1000,
-                   "mask_granularity": 0.3,
+                   "mask_granularity": 10,
                    "mask_density": 0.5,
                    "single_channel": is_single_channel}
 
     rise_explainer = RiseImageExplainer()
 
-    rise_explainer.fit(prediction_fn=temp_servable_copy,
+    classifier_fn = lambda x: temp_servable_copy(x)['probabilities']
+
+    rise_explainer.fit(prediction_fn=classifier_fn,
                        input_size=rise_config['input_size'],
                        number_of_masks=rise_config['number_of_masks'],
                        mask_granularity=rise_config['mask_granularity'],
@@ -261,12 +270,17 @@ def rise_task(self, explanation_id: str):
 
     saliency_map: np.array = rise_explainer.explain(image, state_updater=state_updater)
 
+    # Since we do not need precise saliency maps, we can round them
+    np.round(saliency_map, 3, out=saliency_map)
     result_json = {"masks": saliency_map.tolist()}
 
+    # Store explanation in MongoDB
     db.rise_explanations.update_one({"_id": explanation_id}, {"$set": {'result': result_json,
                                                                        "completed_at": datetime.datetime.now()}})
 
-    temp_servable_copy.delete()  # Remove temporary servable
+    logger.info(f"Finished task to explain {model_name}_{model_version} with rise")
+
+    temp_servable_copy.delete()
     return str(explanation_id)
 
 

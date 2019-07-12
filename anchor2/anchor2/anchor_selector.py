@@ -1,6 +1,5 @@
 from typing import List, Tuple
 import numpy as np
-from copy import deepcopy
 
 from functools import partial
 from .explanation import Explanation
@@ -9,7 +8,6 @@ from .tabular_explanation import TabularExplanation, EqualityPredicate, Inequali
     LessPredicate
 from itertools import compress
 from loguru import logger
-from jsonschema import validate
 
 
 class AnchorSelectionStrategy:

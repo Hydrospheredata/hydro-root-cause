@@ -10,7 +10,7 @@ contract:
   name: "predict"
   inputs:
     input:
-      shape: [-1, 784]
+      shape: [-1, 28, 28]
       type: double
   outputs:
     classes:
