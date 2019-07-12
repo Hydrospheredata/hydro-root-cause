@@ -34,9 +34,9 @@ class TabularExplainer(AnchorExplainer):
         Fits an instance of TabularExplainer with hyperparameters
         :param data: Union[np.array, pd.DataFrame] data which will be used for explaining samples passed
         :param feature_names: List of feature names
-        :param label_decoders: Dictionary from feature idx to list of labels used for label encoding for that feature name
+        :param label_decoders: Dictionary from feature idx to list of labels used for label encoding for that feature model_name
         :param ordinal_features_idx: Indices of float features
-        :param oh_encoded_categories: Dictionary of "Feature name" -> List of feature indices in data used for encoding this "feature name"
+        :param oh_encoded_categories: Dictionary of "Feature model_name" -> List of feature indices in data used for encoding this "feature model_name"
         """
         assert len(data.shape) == 2, "Data should be a matrix"
         # Store feature names to generate human-readable explanations

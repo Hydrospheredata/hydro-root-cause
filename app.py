@@ -1,36 +1,42 @@
 import datetime
 import os
-import time
 from functools import partial
 from typing import Dict, List
 
-from bson import objectid
 import numpy as np
-import pandas as pd
-import requests
-from anchor2 import TabularExplainer
+from bson import objectid
 from celery import Celery
 from flask import Flask, request, jsonify, url_for
-from hydro_serving_grpc.timemachine import ReqstoreClient
-from jsonschema import validate
 from pymongo import MongoClient
 from pymongo.database import Database
 
+from anchor2 import TabularExplainer
+from client import HydroServingClient, HydroServingServable
 from rise.rise import RiseImageExplainer
+from hydro_serving_grpc.reqstore import reqstore_client
+import pandas as pd
 
-REQSTORE_URL = os.getenv("REQSTORE_URL")
-SERVING_URL = os.getenv("SERVING_URL", "http://fc13d681.serving.odsc.k8s.hydrosphere.io")
-MONGO_URL = os.getenv("MONGO_URL", "mongo")
+from loguru import logger
+
+REQSTORE_URL = os.getenv("REQSTORE_URL", "managerui:9090")
+SERVING_URL = os.getenv("SERVING_URL", "managerui:9090")
+
+MONGO_URL = os.getenv("MONGO_URL", "mongodb")
 MONGO_PORT = int(os.getenv("MONGO_PORT", 27017))
 
 mongo_client = MongoClient(host=MONGO_URL, port=MONGO_PORT)
 db = mongo_client['root_cause']
 
+hs_client = HydroServingClient(SERVING_URL)
+rs_client = reqstore_client.ReqstoreClient(REQSTORE_URL, insecure=True)
+
 app = Flask(__name__)
 app.config['CELERY_BROKER_URL'] = f"mongodb://{MONGO_URL}:{MONGO_PORT}/celery_broker'"
 app.config['CELERY_RESULT_BACKEND'] = f"mongodb://{MONGO_URL}:{MONGO_PORT}/celery_backend"
 
-celery = Celery(app.name, broker=app.config['CELERY_BROKER_URL'])
+celery = Celery(app.name,
+                broker=app.config['CELERY_BROKER_URL'],
+                backend=app.config['CELERY_RESULT_BACKEND'])
 celery.conf.update(app.config)
 
 
@@ -87,95 +93,7 @@ def fetch_result(result_id, method):
     return jsonify(explanation)
 
 
-# Function to store sample in a json with columnar signature
-def make_columnar_json(sample, feature_names):
-    # TODO remove columnar json to row-based json
-    output_json = {}
-    if type(sample) == pd.Series:
-        feature_names = sample.index
-        sample = sample.values
-    elif feature_names is None:
-        raise ValueError
-
-    for feature_idx, fname in enumerate(feature_names):
-        output_json[fname] = [int(v) for v in sample[:, feature_idx]]
-    return output_json
-
-
-def get_application_id(application_name: str):
-    r = requests.get(f"{SERVING_URL}/api/v2/application/{application_name}")
-    return r.json()['executionGraph']['stages'][0]['modelVariants'][0]['modelVersion']["id"]
-
-
-def get_data_from_reqstore(application_name):
-    # TODO change to subsampling Dima
-    def request_to_df(r):
-        columns = []
-        values = []
-        for key, value in r.inputs.items():
-            columns.append(key)
-            values.append(value.int64_val)
-        return pd.DataFrame(columns=columns, data=np.array(values).T)
-
-    client = ReqstoreClient(REQSTORE_URL, False)
-    end_time = round(time.time() * 1000000000)
-    application_id = get_application_id(application_name)
-    data = client.getRange(0, end_time, application_id)
-    data = list(data)
-
-    rs = list(map(lambda x: x.entries[0].request, data))
-    rs = [request_to_df(r) for r in rs]
-
-    df = pd.concat(rs, sort=False)
-
-    # Remove [1, 1, 1, ...] which results from UI test model calls
-    df = df.loc[~np.all(df == np.array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]), axis=1)]
-    df.dropna(inplace=True)
-    df.drop_duplicates(inplace=True)
-
-    return df
-
-
-def hydroserving_classifier_call(x, feature_names, application_name, return_label="Prediction"):
-    # TODO change to dirka Bulata
-    response = requests.post(url=f"{SERVING_URL}/gateway/application/{application_name}",
-                             json=make_columnar_json(x, feature_names=feature_names))
-    predicted_label = np.array(response.json()[return_label])
-    return predicted_label
-
-
-def hydroserving_image_classifier_call(x, application_name):
-    # TODO change to dirka Bulata
-    url = f"{SERVING_URL}/gateway/application/{application_name}"
-    response = requests.post(url=url, json={"imgs": x.tolist()})
-    try:
-        predicted_probas = np.array(response.json()["probabilities"])
-        return predicted_probas
-    except KeyError:
-        print("Probabilities not found", response.text)
-        raise ValueError
-    except ValueError:
-        print(response.text)
-        raise ValueError
-
-
 # ----------------------------------------ANCHOR---------------------------------------- #
-
-anchor_schema = {
-    "type": "object",
-    "properties": {
-        "application_name": {"type": "string"},
-        "config": {"type": "object",
-                   "properties": {
-                       "feature_names": {"type": "array"},
-                       "ordinal_features_idx": {"type": "array"},
-                       "label_decoders": {"type": "object"},
-                       "oh_encoded_categories": {"type": "object"},
-                   }
-                   },
-    },
-}
-
 
 @app.route("/anchor", methods=['POST'])
 def anchor():
@@ -184,7 +102,7 @@ def anchor():
     #  ex: db.collection.find( { a: { $bitsAllSet: [ 1, 5 ] } } )
 
     inp_json = request.get_json()
-    validate(inp_json, anchor_schema)
+    logger.info(f"Received request to explain {str(inp_json['model'])} with anchor")
 
     inp_json['created_at'] = datetime.datetime.now()
 
@@ -195,7 +113,7 @@ def anchor():
 
 
 @celery.task(bind=True)
-def anchor_task(explanation_id: str):
+def anchor_task(self, explanation_id: str):
     # Shadows names from flask server scope to prevent problems with forks
     mongo_client: MongoClient = MongoClient(host=MONGO_URL, port=MONGO_PORT)
     db: Database = mongo_client['root_cause']
@@ -207,38 +125,68 @@ def anchor_task(explanation_id: str):
     if 'result' in job_json:
         return job_json['results']
 
-    application_name = job_json['application_name']
-    config = job_json['config']
+    model_name = job_json['model']['name']
+    model_version = job_json['model']['version']
+    config = job_json.get('config', {})
     x = np.array(job_json['explained_instance'])
 
+    logger.info(f"Initiated task to explain {model_name}_{model_version} with anchor")
+
+    # Create temporary servable, so main servable won't be affected
+    temp_servable_copy: HydroServingServable = hs_client.deploy_servable(model_name, model_version)
+
     # Convert config dicts to appropriate types
-    label_decoders: Dict[int, List[str]] = dict([(int(k), v) for (k, v) in config['label_decoders'].items()])
-    oh_encoded_categories: Dict[str, List[int]] = dict(
-        [(k, [int(v) for v in vs]) for (k, vs) in config['oh_encoded_categories'].items()])
+    # label_decoders: Dict[int, List[str]] = dict([(int(k), v) for (k, v) in config['label_decoders'].items()])
+    label_decoders: Dict[int, List[str]] = dict()  # This is a temp workaround, since we can't pass this config through UI
+
+    # oh_encoded_categories: Dict[str, List[int]] = dict(
+    #     [(k, [int(v) for v in vs]) for (k, vs) in config['oh_encoded_categories'].items()])
+    oh_encoded_categories: Dict[str, List[int]] = dict()  # This is a temp workaround, since we can't pass this config through UI
 
     anchor_explainer = TabularExplainer()
 
-    data = get_data_from_reqstore(application_name)
-    data = data.loc[:, config['feature_names']]  # Sort columns according to feature names order
+    # Get subsample to work with
+    model_id = temp_servable_copy.id
+    rs_entries = []
+    for r in rs_client.subsampling(str(model_id), amount=config.get("subsample_size", 5000)):
+        rs_entries.extend(r.entries)
 
-    anchor_explainer.fit(data=data,
+    requests = [temp_servable_copy.contract.decode_request(e.request) for e in rs_entries]
+
+    # concat requests into dataframe format
+    rs = []
+    feature_order = temp_servable_copy.contract.input_names
+    for r in requests:
+        column_arrays = []
+        for feature_name in feature_order:
+            column_arrays.append(r[feature_name])
+        df = pd.DataFrame(np.hstack(column_arrays), columns=feature_order)
+        rs.append(df)
+    reqstore_data = pd.concat(rs)
+
+    # Sort columns according to feature names order
+    reqstore_data = reqstore_data.loc[:, temp_servable_copy.contract.input_names]
+
+    anchor_explainer.fit(data=reqstore_data,
                          label_decoders=label_decoders,
                          ordinal_features_idx=config['ordinal_features_idx'],
                          oh_encoded_categories=oh_encoded_categories,
-                         feature_names=config['feature_names'])
+                         feature_names=temp_servable_copy.contract.input_names)
 
-    classifier_fn = partial(hydroserving_classifier_call,
-                            feature_names=config['feature_names'],
-                            application_name=application_name)
-
-    explanation = anchor_explainer.explain(x, classifier_fn=classifier_fn)
+    explanation = anchor_explainer.explain(x, classifier_fn=temp_servable_copy)
 
     result_json = {"explanation": str(explanation),
                    "coverage": explanation.coverage(),
                    "precision": explanation.precision()}
 
+    # Store explanation in MongoDB 'root_cause' db
     db.anchor_explanations.update_one({"_id": explanation_id}, {"$set": {'result': result_json,
                                                                          "completed_at": datetime.datetime.now()}})
+
+    logger.info(f"Finished task to explain {model_name}_{model_version} with anchor")
+
+    # Remove temporary servable
+    temp_servable_copy.delete()
 
     return str(explanation_id)
 
@@ -246,28 +194,12 @@ def anchor_task(explanation_id: str):
 # ----------------------------------------RISE---------------------------------------- #
 
 
-rise_schema = {
-    "type": "object",
-    "properties": {
-        "application_name": {"type": "string"},
-        "config": {"type": "object",
-                   "properties": {
-                       "input_size": {"type": "array"},
-                       "number_of_masks": {"type": "number"},
-                       "mask_granularity": {"type": "number"},
-                       "mask_density": {"type": "number"},
-                       "single_channel": {"type": "boolean"},
-                   }
-                   },
-    },
-}
-
-
 @app.route("/rise", methods=['POST'])
 def rise():
     inp_json = request.get_json()
-    validate(inp_json, rise_schema)
     inp_json['created_at'] = datetime.datetime.now()
+
+    logger.info(f"Received request to explain {str(inp_json['model'])} with rise")
 
     rise_explanation_id = db.rise_explanations.insert_one(inp_json).inserted_id
     task = rise_task.delay(str(rise_explanation_id))
@@ -288,13 +220,45 @@ def rise_task(self, explanation_id: str):
     if 'result' in job_json:
         return job_json['results']
 
-    application_name = job_json['application_name']
-    rise_config = job_json['config']
-    image = np.array(job_json['image'])
+    model_name = job_json['model']['name']
+    model_version = job_json['model']['version']
+
+    logger.info(f"Initiated task to explain {model_name}_{model_version} with rise")
+
+    # Create temporary servable
+    temp_servable_copy: HydroServingServable = hs_client.deploy_servable(model_name, model_version)
+
+    image = np.array(job_json['explained_instance'])
+
+    if temp_servable_copy.contract.number_of_input_tensors != 1:
+        raise ValueError("Unable to explain multi-tensor image models")
+
+    if 'probabilities' not in temp_servable_copy.contract.output_names:
+        raise ValueError("Model have to return probabilities tensor")
+
+    input_tensor_name = temp_servable_copy.contract.input_names[0]
+
+    input_dims = temp_servable_copy.contract.input_shapes[input_tensor_name]
+    input_dims = input_dims[1:]  # Remove -1 as batch dim
+
+    if len(input_dims) == 2:
+        is_single_channel = True
+    elif len(input_dims) == 3:
+        is_single_channel = False
+    else:
+        raise ValueError(f"Unable to explain image models with shape {input_dims}")
+
+    rise_config = {"input_size": input_dims,
+                   "number_of_masks": 1000,
+                   "mask_granularity": 10,
+                   "mask_density": 0.5,
+                   "single_channel": is_single_channel}
 
     rise_explainer = RiseImageExplainer()
-    prediction_fn = partial(hydroserving_image_classifier_call, application_name=application_name)
-    rise_explainer.fit(prediction_fn=prediction_fn,
+
+    classifier_fn = lambda x: temp_servable_copy(x)['probabilities']
+
+    rise_explainer.fit(prediction_fn=classifier_fn,
                        input_size=rise_config['input_size'],
                        number_of_masks=rise_config['number_of_masks'],
                        mask_granularity=rise_config['mask_granularity'],
@@ -304,14 +268,19 @@ def rise_task(self, explanation_id: str):
     def state_updater(x):
         self.update_state(state='STARTED', meta={'progress': x})
 
-    saliency_map: np.array = rise_explainer.explain(image,
-                                                    state_updater=state_updater)
+    saliency_map: np.array = rise_explainer.explain(image, state_updater=state_updater)
 
+    # Since we do not need precise saliency maps, we can round them
+    np.round(saliency_map, 3, out=saliency_map)
     result_json = {"masks": saliency_map.tolist()}
 
+    # Store explanation in MongoDB
     db.rise_explanations.update_one({"_id": explanation_id}, {"$set": {'result': result_json,
                                                                        "completed_at": datetime.datetime.now()}})
 
+    logger.info(f"Finished task to explain {model_name}_{model_version} with rise")
+
+    temp_servable_copy.delete()
     return str(explanation_id)
 
 

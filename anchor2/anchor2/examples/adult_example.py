@@ -103,7 +103,7 @@ for feature, fun in transformations.items():
     df[feature] = fun(df[feature])
 
 categorical_features_idx = [1, 2, 3, 4, 5, 6, 7, 8, 9, 11]
-categorical_names = {}  # Dictionary with (Category id -> category classes)
+categorical_names = {}  # Dictionary with (Category __id -> category classes)
 for f_idx in categorical_features_idx:
     le = sklearn.preprocessing.LabelEncoder()
     df.iloc[:, f_idx] = le.fit_transform(df.iloc[:, f_idx])

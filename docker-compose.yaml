@@ -1,23 +1,192 @@
-version: '3'
+version: "3.5"
+
+networks:
+  hydronet:
+    name: demo_hydronet
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.16.0.0/24
+
+  extnet:
+    driver: bridge
+
+volumes:
+  sonardata:
+
 services:
-  web:
+
+  root-cause:
     build: .
     command: python app.py
-    env_file:
-      - .env
     depends_on:
-      - mongo
-      - worker
+      - mongodb
+      - root-cause-worker
     ports:
       - "5000:5000"
-  worker:
+    networks:
+      - hydronet
+      - extnet
+
+  root-cause-worker:
     build: .
     command: celery -A app.celery worker
-    env_file:
-      - .env
     depends_on:
-      - mongo
-  mongo:
-    image: "mongo"
-    expose:
-      - "27017"
+      - mongodb
+    networks:
+      - hydronet
+
+
+  postgres:
+    image: postgres:9.6-alpine
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    networks:
+      - hydronet
+    environment:
+      - "POSTGRES_DB=docker"
+      - "POSTGRES_USER=docker"
+      - "POSTGRES_PASSWORD=docker"
+
+  gateway:
+    image:  hydrosphere/serving-gateway:cdad668ec7f6606d5978a42b675d455a56c27bb0
+    container_name: gateway
+    ports:
+      - "29090:9090"
+      - "29091:9091"
+    networks:
+      - hydronet
+    environment:
+      - "API_GATEWAY_HOST=managerui"
+      - "API_GATEWAY_GRPC_PORT=9090"
+      - "API_GATEWAY_HTTP_PORT=80"
+      - "HTTP_PORT=9090"
+      - "GRPC_PORT=9091"
+
+  manager:
+    image:  hydrosphere/serving-manager:9266bf80210c2329d3eb04151aef020a84383a0a
+    container_name: manager
+    ports:
+      - "19090:9090"
+      - "19091:9091"
+    networks:
+      - hydronet
+      - extnet
+    environment:
+      - "DATABASE_HOST=postgres"
+      - "NETWORK_NAME=demo_hydronet"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  managerui:
+    image:  hydrosphere/serving-manager-ui:76aff8104004195ab927d6ba6c8df543089995bd
+    container_name: managerui
+    ports:
+      - "80:80"
+      - "9090:9090"
+    networks:
+      - extnet
+      - hydronet
+    environment:
+      - "MANAGER_HOST=manager"
+      - "MONITORING_HOST=serving-sonar"
+      - "GATEWAY_HOST=gateway"
+      - "REQSTORE_HOST=reqstore"
+      - "MANAGER_HTTP_PORT=9090"
+      - "MANAGER_GRPC_PORT=9091"
+      - "GATEWAY_HTTP_PORT=9090"
+      - "GATEWAY_GRPC_PORT=9091"
+      - "MONITORING_HTTP_PORT=9090"
+      - "MONITORING_GRPC_PORT=9091"
+      - "REQSTORE_HTTP_PORT=9090"
+      - "REQSTORE_GRPC_PORT=9091"
+      - "TIMEMACHINE_HOST=timemachine"
+      - "TIMEMACHINE_HTTP_PORT=9090"
+
+  influxdb:
+    image: influxdb:1.5.2
+    container_name: influxdb
+    ports:
+      - "8086:8086"
+    restart: always
+    networks:
+      - hydronet
+      - extnet
+
+  mongodb:
+    image: mongo
+    container_name: mongodb
+    ports:
+      - 27017:27017
+    networks:
+      - extnet
+      - hydronet
+  sonar-data:
+    image: docker.hydrosphere.io/sonar-data:latest
+    volumes:
+      - sonardata:/data
+
+  serving-sonar:
+    image:  docker.hydrosphere.io/sonar:547968cca7993b091034ab34b492ac60a6b5d820
+    container_name: serving-sonar
+    ports:
+      - "39090:9090"
+      - "39091:9091"
+    environment:
+      - "DB_TYPE=postgres"
+      - "DB_JDBC_URL=jdbc:postgresql://postgres:5432/docker"
+      - "DB_USER=docker"
+      - "DB_PASS=docker"
+      - "INFLUX_HOST=influxdb"
+      - "INFLUX_PORT=8086"
+      - "MONGO_HOST=mongodb"
+      - "HTTP_PORT=9090"
+      - "GRPC_PORT=9091"
+      - "SIDECAR_HOST=managerui"
+      - "SIDECAR_HTTP_PORT=80"
+      - "SIDECAR_GRPC_PORT=9090"
+    networks:
+      - extnet
+      - hydronet
+    volumes:
+      - sonardata:/data
+
+  reqstore:
+    image: hydrosphere/reqstore_cpp:0.0.11
+    container_name: reqstore
+    environment:
+      - "AWS_DEFAULT_REGION=us-west-2"
+      - "AWS_SECRET_ACCESS_KEY=none"
+      - "AWS_ACCESS_KEY_ID=none"
+      - "DB_NAME=default"
+      - "BACKUP_PROVIDER=none"
+      - "DST_LOCAL_DIR=default"
+      - "DST_BUCKET=default"
+      - "SRC_LOCAL_DIR=default"
+      - "HTTP_PORT=9090"
+      - "GRPC_PORT=9091"
+      - "DEBUG=1"
+    ports:
+      - "7265:9090"
+      - "7266:9091"
+    networks:
+      - hydronet
+      - extnet
+    volumes:
+      - sonardata:/default
+
+  timemachine:
+    image:  docker.hydrosphere.io/hydro-serving-timemachine:0.0.4
+    container_name: timemachine
+    environment:
+      - "HTTP_PORT=9090"
+      - "REQSTORE_HOST=reqstore"
+      - "REQSTORE_PORT=9091"
+      - "PREDICTION_HOST=gateway"
+      - "PREDICTION_PORT=9091"
+    ports:
+      - "7366:9090"
+    networks:
+      - hydronet
+      - extnet

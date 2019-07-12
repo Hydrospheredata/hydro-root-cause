@@ -78,8 +78,8 @@ class AnchorTabularExplainer(object):
         :param data: dataset which model have to explain
         :param target: predictions for this dataset. Only needed for balancing if balance == True. Ignored if balance == False
         :param categorical_features_idx: indices of categorical features in this data
-        :param categorical_names: dictionary from feature_index to map[Int->String] from category id into category name
-        :param class_names: dictionary from label code into label name
+        :param categorical_names: dictionary from feature_index to map[Int->String] from category __id into category model_name
+        :param class_names: dictionary from label code into label model_name
         :param balance: whether to make stratified subsampled version of data
         """
         self.feature_names = list(data.columns)
@@ -309,7 +309,7 @@ class AnchorTabularExplainer(object):
         <meta http-equiv="content-type" content="text/html; charset=UTF8">
         <head><script>%s </script></head><body>''' % bundle
         out += u'''
-        <div id="{random_id}" />
+        <div __id="{random_id}" />
         <script>
             div = d3.select("#{random_id}");
             lime.RenderExplanationFrame(div,{label_names}, {predict_proba},

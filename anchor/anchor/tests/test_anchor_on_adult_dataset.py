@@ -104,7 +104,7 @@ class TestAnchorOnAdultDataset(TestCase):
             df[feature] = fun(df[feature])
 
         categorical_features_idx = [1, 2, 3, 4, 5, 6, 7, 8, 9, 11]
-        categorical_names = {}  # Dictionary with (Category id -> category classes)
+        categorical_names = {}  # Dictionary with (Category __id -> category classes)
         for f_idx in categorical_features_idx:
             le = sklearn.preprocessing.LabelEncoder()
             df.iloc[:, f_idx] = le.fit_transform(df.iloc[:, f_idx])
@@ -146,8 +146,8 @@ class TestAnchorOnAdultDataset(TestCase):
         for i, x_idx in enumerate(x_idxs):
             x = self.val_X[x_idx]
             exp = self.explainer.explain_instance(x, self.predict_fn, threshold=0.95)
-            with self.subTest(i=i, msg="Non-empty feature name in explanation"):
-                self.assertTrue(all([len(name) > 0 for name in exp.names()]), "Each feature name should not be empty string")
+            with self.subTest(i=i, msg="Non-empty feature model_name in explanation"):
+                self.assertTrue(all([len(name) > 0 for name in exp.names()]), "Each feature model_name should not be empty string")
 
     # @timeout_decorator.timeout(60, use_signals=False)
     @unittest.skip("Debug")
