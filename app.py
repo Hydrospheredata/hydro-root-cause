@@ -1,22 +1,21 @@
 import datetime
 import os
-from functools import partial
 from typing import Dict, List
 
 import numpy as np
+import pandas as pd
+from anchor2 import TabularExplainer
 from bson import objectid
 from celery import Celery
 from flask import Flask, request, jsonify, url_for
+from flask_cors import CORS
+from hydro_serving_grpc.reqstore import reqstore_client
+from loguru import logger
 from pymongo import MongoClient
 from pymongo.database import Database
 
-from anchor2 import TabularExplainer
 from client import HydroServingClient, HydroServingServable
 from rise.rise import RiseImageExplainer
-from hydro_serving_grpc.reqstore import reqstore_client
-import pandas as pd
-
-from loguru import logger
 
 REQSTORE_URL = os.getenv("REQSTORE_URL", "managerui:9090")
 SERVING_URL = os.getenv("SERVING_URL", "managerui:9090")
@@ -31,6 +30,8 @@ hs_client = HydroServingClient(SERVING_URL)
 rs_client = reqstore_client.ReqstoreClient(REQSTORE_URL, insecure=True)
 
 app = Flask(__name__)
+CORS(app)
+
 app.config['CELERY_BROKER_URL'] = f"mongodb://{MONGO_URL}:{MONGO_PORT}/celery_broker'"
 app.config['CELERY_RESULT_BACKEND'] = f"mongodb://{MONGO_URL}:{MONGO_PORT}/celery_backend"
 
