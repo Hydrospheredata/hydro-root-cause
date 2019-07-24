@@ -63,7 +63,7 @@ def task_status(task_id, method):
         pass
     elif task.state == 'SUCCESS':
         # job completed, return url to result
-        response['result'] = url_for('fetch_result', _external=True, result_id=str(task.result), method=method)
+        response['result'] = url_for('fetch_result', _external=False, result_id=str(task.result), method=method)
 
     elif task.state == "STARTED":
         # job is in progress, return progress
@@ -110,7 +110,7 @@ def anchor():
     anchor_explanation_id = db.anchor_explanations.insert_one(inp_json).inserted_id
     task = anchor_task.delay(str(anchor_explanation_id))
 
-    return jsonify({}), 202, {'Location': url_for('task_status', task_id=task.id, method="anchor")}
+    return jsonify({}), 202, {'Location': url_for('task_status', task_id=task.id, _external=False, method="anchor")}
 
 
 @celery.task(bind=True)
@@ -205,7 +205,7 @@ def rise():
     rise_explanation_id = db.rise_explanations.insert_one(inp_json).inserted_id
     task = rise_task.delay(str(rise_explanation_id))
 
-    return jsonify({}), 202, {'Location': url_for('task_status', task_id=task.id, method="rise")}
+    return jsonify({}), 202, {'Location': url_for('task_status', _external=False, task_id=task.id, method="rise")}
 
 
 @celery.task(bind=True)
