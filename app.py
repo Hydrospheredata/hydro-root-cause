@@ -23,7 +23,7 @@ SERVING_URL = os.getenv("SERVING_URL", "managerui:9090")
 MONGO_URL = os.getenv("MONGO_URL", "mongodb")
 MONGO_PORT = int(os.getenv("MONGO_PORT", 27017))
 
-mongo_client = MongoClient(host=MONGO_URL, port=MONGO_PORT)
+mongo_client = MongoClient(host=MONGO_URL, port=MONGO_PORT, maxPoolSize=200)
 db = mongo_client['root_cause']
 
 hs_client = HydroServingClient(SERVING_URL)
@@ -273,6 +273,15 @@ def rise_task(self, explanation_id: str):
 
     # Since we do not need precise saliency maps, we can round them
     np.round(saliency_map, 3, out=saliency_map)
+
+    # Select axes for computing min\max
+    axes = tuple(range(1, saliency_map.ndim))
+
+    # normalize saliency map to (0;1)
+    saliency_map = (saliency_map - np.min(saliency_map, axis=axes)) / (np.max(saliency_map, axis=axes) - np.min(saliency_map, axis=axes))
+    np.rint(saliency_map * 255, out=saliency_map)  # Round to int pixel values
+    saliency_map = saliency_map.astype(np.int8)  # Use corresponding dtype
+
     result_json = {"masks": saliency_map.tolist()}
 
     # Store explanation in MongoDB
