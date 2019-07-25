@@ -23,7 +23,7 @@ SERVING_URL = os.getenv("SERVING_URL", "managerui:9090")
 MONGO_URL = os.getenv("MONGO_URL", "mongodb")
 MONGO_PORT = int(os.getenv("MONGO_PORT", 27017))
 
-mongo_client = MongoClient(host=MONGO_URL, port=MONGO_PORT)
+mongo_client = MongoClient(host=MONGO_URL, port=MONGO_PORT, maxPoolSize=200)
 db = mongo_client['root_cause']
 
 hs_client = HydroServingClient(SERVING_URL)
@@ -63,7 +63,7 @@ def task_status(task_id, method):
         pass
     elif task.state == 'SUCCESS':
         # job completed, return url to result
-        response['result'] = url_for('fetch_result', _external=True, result_id=str(task.result), method=method)
+        response['result'] = url_for('fetch_result', _external=False, result_id=str(task.result), method=method)
 
     elif task.state == "STARTED":
         # job is in progress, return progress
@@ -110,7 +110,7 @@ def anchor():
     anchor_explanation_id = db.anchor_explanations.insert_one(inp_json).inserted_id
     task = anchor_task.delay(str(anchor_explanation_id))
 
-    return jsonify({}), 202, {'Location': url_for('task_status', task_id=task.id, method="anchor")}
+    return jsonify({}), 202, {'Location': url_for('task_status', task_id=task.id, _external=False, method="anchor")}
 
 
 @celery.task(bind=True)
@@ -205,7 +205,7 @@ def rise():
     rise_explanation_id = db.rise_explanations.insert_one(inp_json).inserted_id
     task = rise_task.delay(str(rise_explanation_id))
 
-    return jsonify({}), 202, {'Location': url_for('task_status', task_id=task.id, method="rise")}
+    return jsonify({}), 202, {'Location': url_for('task_status', _external=False, task_id=task.id, method="rise")}
 
 
 @celery.task(bind=True)
@@ -273,6 +273,15 @@ def rise_task(self, explanation_id: str):
 
     # Since we do not need precise saliency maps, we can round them
     np.round(saliency_map, 3, out=saliency_map)
+
+    # Select axes for computing min\max
+    axes = tuple(range(1, saliency_map.ndim))
+
+    # normalize saliency map to (0;1)
+    saliency_map = (saliency_map - np.min(saliency_map, axis=axes)) / (np.max(saliency_map, axis=axes) - np.min(saliency_map, axis=axes))
+    np.rint(saliency_map * 255, out=saliency_map)  # Round to int pixel values
+    saliency_map = saliency_map.astype(np.int8)  # Use corresponding dtype
+
     result_json = {"masks": saliency_map.tolist()}
 
     # Store explanation in MongoDB
