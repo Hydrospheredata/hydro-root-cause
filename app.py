@@ -22,8 +22,11 @@ SERVING_URL = os.getenv("SERVING_URL", "managerui:9090")
 
 MONGO_URL = os.getenv("MONGO_URL", "mongodb")
 MONGO_PORT = int(os.getenv("MONGO_PORT", 27017))
+MONGO_AUTH_DB = os.getenv("MONGO_AUTH_DB", "admin")
+MONGO_USER = os.getenv("MONGO_USER")
+MONGO_PASS = os.getenv("MONGO_PASS")
 
-mongo_client = MongoClient(host=MONGO_URL, port=MONGO_PORT, maxPoolSize=200)
+mongo_client = MongoClient(host=MONGO_URL, port=MONGO_PORT, maxPoolSize=200, username=MONGO_USER, password=MONGO_PASS, authSource=MONGO_AUTH_DB)
 db = mongo_client['root_cause']
 
 hs_client = HydroServingClient(SERVING_URL)
@@ -32,7 +35,7 @@ rs_client = reqstore_client.ReqstoreClient(REQSTORE_URL, insecure=True)
 app = Flask(__name__)
 CORS(app)
 
-app.config['CELERY_BROKER_URL'] = f"mongodb://{MONGO_URL}:{MONGO_PORT}/celery_broker'"
+app.config['CELERY_BROKER_URL'] = f"mongodb://{MONGO_URL}:{MONGO_PORT}/celery_broker"
 app.config['CELERY_RESULT_BACKEND'] = f"mongodb://{MONGO_URL}:{MONGO_PORT}/celery_backend"
 
 celery = Celery(app.name,
