@@ -30,7 +30,7 @@ hs_client = HydroServingClient(SERVING_URL)
 rs_client = reqstore_client.ReqstoreClient(REQSTORE_URL, insecure=True)
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, expose_headers=['location'])
 
 app.config['CELERY_BROKER_URL'] = f"mongodb://{MONGO_URL}:{MONGO_PORT}/celery_broker'"
 app.config['CELERY_RESULT_BACKEND'] = f"mongodb://{MONGO_URL}:{MONGO_PORT}/celery_backend"
