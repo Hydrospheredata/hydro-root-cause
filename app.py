@@ -132,11 +132,11 @@ def anchor_task(self, explanation_id: str):
     model_version = job_json['model']['version']
     config = job_json.get('config', {})
 
-    ts = job_json['explained_instance']['timestamp']
-    folder = job_json['explained_instance']['folder']
-    reqstore_uid = job_json['explained_instance']['uid']
-
     model = hs_client.get_model(model_name, model_version)
+
+    ts = job_json['explained_instance']['timestamp']
+    folder = str(model.id)
+    reqstore_uid = job_json['explained_instance']['uid']
 
     input_tensors = get_reqstore_request_tensors(model.contract, rs_client, folder, ts, reqstore_uid)
 
@@ -245,12 +245,11 @@ def rise_task(self, explanation_id: str):
 
     model_name = job_json['model']['name']
     model_version = job_json['model']['version']
+    model = hs_client.get_model(model_name, model_version)
 
     ts = job_json['explained_instance']['timestamp']
-    folder = job_json['explained_instance']['folder']
+    folder = str(model.id)
     reqstore_uid = job_json['explained_instance']['uid']
-
-    model = hs_client.get_model(model_name, model_version)
 
     if model.contract.number_of_input_tensors != 1:
         raise ValueError("Unable to explain multi-tensor models")
@@ -270,8 +269,8 @@ def rise_task(self, explanation_id: str):
     elif len(image.shape) == 4:
         image = image[0]
 
-    if len(image.shape) == 3 and (image.shape[-1] != 3 or image.shape[-1] != 1):
-        raise ValueError(f"Invalid image shape: {image.shape}. Expected channels_last")
+    # if len(image.shape) == 3 and (image.shape[-1] != 3 and image.shape[-1] != 1):
+    #     raise ValueError(f"Invalid image shape: {image.shape}. Expected channels_last")
 
     logger.info(
         f"Initiated task to explain image folder:{folder}, ts:{ts}, uid:{reqstore_uid} under model {model_name}_{model_version} with rise")
@@ -282,7 +281,7 @@ def rise_task(self, explanation_id: str):
     input_tensor_name = temp_servable_copy.contract.input_names[0]
 
     input_dims = temp_servable_copy.contract.input_shapes[input_tensor_name]
-    input_dims = input_dims[1:]  # Remove -1 as batch dim
+    input_dims = input_dims[1:]  # Remove 0 dimension as batch dim
 
     if len(input_dims) == 2:
         is_single_channel = True
