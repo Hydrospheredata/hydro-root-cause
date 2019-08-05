@@ -26,7 +26,9 @@ MONGO_AUTH_DB = os.getenv("MONGO_AUTH_DB", "admin")
 MONGO_USER = os.getenv("MONGO_USER")
 MONGO_PASS = os.getenv("MONGO_PASS")
 
-mongo_client = MongoClient(host=MONGO_URL, port=MONGO_PORT, maxPoolSize=200, username=MONGO_USER, password=MONGO_PASS, authSource=MONGO_AUTH_DB)
+mongo_client = MongoClient(host=MONGO_URL, port=MONGO_PORT, maxPoolSize=200,
+                           username=MONGO_USER, password=MONGO_PASS,
+                           authSource=MONGO_AUTH_DB)
 db = mongo_client['root_cause']
 
 hs_client = HydroServingClient(SERVING_URL)
@@ -119,7 +121,8 @@ def anchor():
 @celery.task(bind=True)
 def anchor_task(self, explanation_id: str):
     # Shadows names from flask server scope to prevent problems with forks
-    mongo_client: MongoClient = MongoClient(host=MONGO_URL, port=MONGO_PORT)
+    mongo_client: MongoClient = MongoClient(host=MONGO_URL, port=MONGO_PORT,
+                                            username=MONGO_USER, password=MONGO_PASS, authSource=MONGO_AUTH_DB)
     db: Database = mongo_client['root_cause']
 
     explanation_id = objectid.ObjectId(explanation_id)
@@ -214,7 +217,8 @@ def rise():
 @celery.task(bind=True)
 def rise_task(self, explanation_id: str):
     # Shadows names from flask server scope to prevent problems with forks
-    mongo_client: MongoClient = MongoClient(host=MONGO_URL, port=MONGO_PORT)
+    mongo_client: MongoClient = MongoClient(host=MONGO_URL, port=MONGO_PORT,
+                                            username=MONGO_USER, password=MONGO_PASS, authSource=MONGO_AUTH_DB)
     db: Database = mongo_client['root_cause']
 
     explanation_id = objectid.ObjectId(explanation_id)
