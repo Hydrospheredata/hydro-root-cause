@@ -41,8 +41,8 @@ CORS(app, expose_headers=['location'])
 connection_string = f"mongodb://{MONGO_URL}:{MONGO_PORT}"
 if MONGO_USER is not None and MONGO_PASS is not None:
     connection_string = f"mongodb://{MONGO_USER}:{MONGO_PASS}@{MONGO_URL}:{MONGO_PORT}"
-app.config['CELERY_BROKER_URL'] = f"{connection_string}/celery_broker"
-app.config['CELERY_RESULT_BACKEND'] = f"{connection_string}/celery_backend"
+app.config['CELERY_BROKER_URL'] = f"{connection_string}/celery_broker?authSource={MONGO_AUTH_DB}"
+app.config['CELERY_RESULT_BACKEND'] = f"{connection_string}/celery_backend?authSource={MONGO_AUTH_DB}"
 
 celery = Celery(app.name,
                 broker=app.config['CELERY_BROKER_URL'],
