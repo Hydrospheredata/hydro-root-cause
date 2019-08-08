@@ -201,7 +201,7 @@ class HSContract:
                     f" expected {self.input_shapes[tensor_name]}"
 
         error_message += tensor_shapes_error_message
-        error_message += tensor_shapes_error_message
+        error_message += tensor_dtypes_error_message
 
         return valid, error_message
 

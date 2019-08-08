@@ -70,7 +70,6 @@ def task_status(task_id, method):
     elif task.state == "STARTED":
         # job is in progress, return progress
         response['progress'] = task.info['progress']
-
     else:
         # something went wrong in the background job, return the exception raised
         response['description'] = str(task.info)
@@ -115,6 +114,46 @@ def anchor():
     return jsonify({}), 202, {'Location': '/rootcause' + url_for('task_status', task_id=task.id, _external=False, method="anchor")}
 
 
+def get_dataframe_subsample(model, subsample_size=1000):
+    # Get subsample to work with
+    model_id = model.id
+    rs_entries = []
+    for r in rs_client.subsampling(str(model_id), amount=subsample_size):
+        rs_entries.extend(r.entries)
+
+    requests = [model.contract.decode_request(e.request) for e in rs_entries]
+
+    # concat requests into dataframe format
+    rs = []
+    feature_order = model.contract.input_names
+    for r in requests:
+        column_arrays = []
+        for feature_name in feature_order:
+            column_arrays.append(r[feature_name])
+        df = pd.DataFrame(np.hstack(column_arrays), columns=feature_order)
+        rs.append(df)
+    reqstore_data = pd.concat(rs)
+
+    # Sort columns according to feature names order
+    reqstore_data = reqstore_data.loc[:, model.contract.input_names]
+    reqstore_data.drop_duplicates(inplace=True)
+    return reqstore_data
+
+
+def get_tensor_subsample(model, subsample_size=1000):
+    # Get subsample to work with
+    model_id = model.id
+    rs_entries = []
+    for r in rs_client.subsampling(str(model_id), amount=subsample_size):
+        rs_entries.extend(r.entries)
+
+    requests = [model.contract.decode_request(e.request)['input'] for e in rs_entries]
+    data = np.vstack(requests)
+    df = pd.DataFrame(data)
+    df.drop_duplicates(inplace=True)
+    return df
+
+
 @celery.task(bind=True)
 def anchor_task(self, explanation_id: str):
     # Shadows names from flask server scope to prevent problems with forks
@@ -138,18 +177,25 @@ def anchor_task(self, explanation_id: str):
     folder = str(model.id)
     reqstore_uid = job_json['explained_instance']['uid']
 
+    logger.info(
+        f"Initiated task to explain numerical sample folder:{folder}, ts:{ts},"
+        f" uid:{reqstore_uid} under model {model_name}_{model_version} with anchor")
+
+    if 'classes' not in model.contract.output_names:
+        raise ValueError("Model have to return 'classes' tensor of shape [-1; 1]")
+
     input_tensors = get_reqstore_request_tensors(model.contract, rs_client, folder, ts, reqstore_uid)
 
-    if len(input_tensors) != 1:
-        raise ValueError("Request has to many input tensors")
+    input_array = input_tensors['input']
 
-    x: np.ndarray = list(input_tensors.values())[0]
+    if input_array.shape[0] != 1:
+        raise ValueError("Request has to have a single sample")
 
-    logger.info(
-        f"Initiated task to explain image folder:{folder}, ts:{ts}, uid:{reqstore_uid} under model {model_name}_{model_version} with rise")
+    x: np.ndarray = input_array[0]
 
     # Create temporary servable, so main servable won't be affected
     temp_servable_copy: HydroServingServable = hs_client.deploy_servable(model_name, model_version)
+    logger.info("Servable deployed")
 
     # Convert config dicts to appropriate types
     # label_decoders: Dict[int, List[str]] = dict([(int(k), v) for (k, v) in config['label_decoders'].items()])
@@ -162,36 +208,19 @@ def anchor_task(self, explanation_id: str):
     anchor_explainer = TabularExplainer()
 
     # Get subsample to work with
-    model_id = temp_servable_copy.id
-    rs_entries = []
-    for r in rs_client.subsampling(str(model_id), amount=config.get("subsample_size", 5000)):
-        rs_entries.extend(r.entries)
-
-    requests = [model.contract.decode_request(e.request) for e in rs_entries]
-
-    # concat requests into dataframe format
-    rs = []
-    feature_order = model.contract.input_names
-    for r in requests:
-        column_arrays = []
-        for feature_name in feature_order:
-            column_arrays.append(r[feature_name])
-        df = pd.DataFrame(np.hstack(column_arrays), columns=feature_order)
-        rs.append(df)
-    reqstore_data = pd.concat(rs)
-
-    # Sort columns according to feature names order
-    reqstore_data = reqstore_data.loc[:, model.contract.input_names]
+    logger.info("Start fetching reqstore data")
+    reqstore_data = get_tensor_subsample(model, config.get("subsample_size", 5000))
+    logger.info("Finished fetching reqstore data")
 
     anchor_explainer.fit(data=reqstore_data,
                          label_decoders=label_decoders,
-                         ordinal_features_idx=config['ordinal_features_idx'],
+                         ordinal_features_idx=config.get('ordinal_features_idx', [0, 11]),
                          oh_encoded_categories=oh_encoded_categories,
-                         feature_names=model.contract.input_names)
+                         feature_names=None)
 
-    explanation = anchor_explainer.explain(x, classifier_fn=temp_servable_copy)
+    explanation = anchor_explainer.explain(x, classifier_fn=lambda k: temp_servable_copy(k)['classes'])
 
-    result_json = {"explanation": str(explanation),
+    result_json = {"explanation": [str(p) for p in explanation.predicates],
                    "coverage": explanation.coverage(),
                    "precision": explanation.precision()}
 

@@ -40,6 +40,7 @@ class DiscretizerTransformer:
                 discretizers.append(KBinsDiscretizer(n_bins=n_bins, encode="ordinal", strategy="quantile"))
 
         for discretizer, feature_idx in zip(discretizers, ordinal_indices):
+
             discretizer.fit(data[:, feature_idx].reshape(-1, 1))
         self.discretizers = discretizers
 
