@@ -6,10 +6,10 @@ from loguru import logger
 from pymongo import MongoClient
 from pymongo.database import Database
 
+import utils
 from app import celery, rs_client, hs_client, MONGO_PORT, MONGO_URL
 from client import HydroServingServable
 from rise.rise import RiseImageExplainer
-import utils
 
 
 @celery.task(bind=True)

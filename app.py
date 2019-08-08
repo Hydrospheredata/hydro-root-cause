@@ -11,7 +11,6 @@ from pymongo import MongoClient
 
 import utils
 from client import HydroServingClient
-import tasks
 
 REQSTORE_URL = os.getenv("REQSTORE_URL", "managerui:9090")
 SERVING_URL = os.getenv("SERVING_URL", "managerui:9090")
@@ -29,13 +28,17 @@ app = Flask(__name__)
 
 CORS(app, expose_headers=['location'])
 
-app.config['CELERY_BROKER_URL'] = f"mongodb://{MONGO_URL}:{MONGO_PORT}/celery_broker'"
+app.config['CELERY_BROKER_URL'] = f"mongodb://{MONGO_URL}:{MONGO_PORT}/celery_broker"
 app.config['CELERY_RESULT_BACKEND'] = f"mongodb://{MONGO_URL}:{MONGO_PORT}/celery_backend"
 
 celery = Celery(app.name,
                 broker=app.config['CELERY_BROKER_URL'],
                 backend=app.config['CELERY_RESULT_BACKEND'])
+celery.autodiscover_tasks(["rise_tasks", "anchor_tasks"], force=True)
 celery.conf.update(app.config)
+
+import anchor_tasks
+import rise_tasks
 
 
 @app.route("/")
@@ -45,7 +48,7 @@ def hello():
 
 @app.route("/supported_methods", methods=['GET'])
 def get_supported_methods():
-    model_json = request.json()
+    model_json = request.get_json()
     model_name = model_json['model']['name']
     model_version = model_json['model']['version']
     model = hs_client.get_model(model_name, model_version)
@@ -56,9 +59,9 @@ def get_supported_methods():
 @app.route('/status/<method>/<task_id>', methods=["GET"])
 def task_status(task_id, method):
     if method == "rise":
-        task = tasks.rise.rise_task.AsyncResult(task_id)
+        task = rise_tasks.tasks.rise_task.AsyncResult(task_id)
     elif method == "anchor":
-        task = tasks.anchor.anchor_task.AsyncResult(task_id)
+        task = anchor_tasks.tasks.anchor_task.AsyncResult(task_id)
     else:
         raise ValueError
 
@@ -109,7 +112,7 @@ def anchor():
     inp_json['created_at'] = datetime.datetime.now()
 
     anchor_explanation_id = db.anchor_explanations.insert_one(inp_json).inserted_id
-    task = tasks.anchor.anchor_task.delay(str(anchor_explanation_id))
+    task = anchor_tasks.tasks.anchor_task.delay(str(anchor_explanation_id))
 
     return jsonify({}), 202, {'Location': '/rootcause' + url_for('task_status', task_id=task.id, _external=False, method="anchor")}
 
@@ -122,7 +125,7 @@ def rise():
     logger.info(f"Received request to explain {str(inp_json['model'])} with rise")
 
     rise_explanation_id = db.rise_explanations.insert_one(inp_json).inserted_id
-    task = tasks.rise.rise_task.delay(str(rise_explanation_id))
+    task = rise_tasks.tasks.rise_task.delay(str(rise_explanation_id))
 
     return jsonify({}), 202, {'Location': '/rootcause' + url_for('task_status', _external=False, task_id=task.id, method="rise")}
 

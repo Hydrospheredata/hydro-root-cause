@@ -1,7 +1,7 @@
 import hydro_serving_grpc as hs
 import numpy as np
-from keras.models import load_model
 import tensorflow as tf
+from keras.models import load_model
 
 
 def extract_value(proto):

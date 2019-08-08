@@ -3,7 +3,7 @@ name: "densenet201"
 payload:
   - "src/"
   - "requirements.txt"
-#  - "densenet201_weights_tf_dim_ordering_tf_kernels.h5"
+  - "densenet201_weights_tf_dim_ordering_tf_kernels.h5"
 runtime: "hydrosphere/serving-runtime-python-3.6:0.1.2-rc0"
 install-command: "pip install -r requirements.txt"
 contract:

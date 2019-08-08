@@ -1,11 +1,9 @@
-from typing import List, Dict
-
-import numpy as np
-from sklearn.preprocessing import KBinsDiscretizer, OneHotEncoder, FunctionTransformer
 from itertools import chain
+from typing import Dict
+
+from sklearn.preprocessing import KBinsDiscretizer, OneHotEncoder, FunctionTransformer
 
 from .tabular_explanation import *
-from loguru import logger
 
 
 class DiscretizerTransformer:
@@ -40,7 +38,6 @@ class DiscretizerTransformer:
                 discretizers.append(KBinsDiscretizer(n_bins=n_bins, encode="ordinal", strategy="quantile"))
 
         for discretizer, feature_idx in zip(discretizers, ordinal_indices):
-
             discretizer.fit(data[:, feature_idx].reshape(-1, 1))
         self.discretizers = discretizers
 

@@ -1,11 +1,9 @@
 import os
+import time
+
 import numpy as np
 import pandas as pd
 import sklearn.ensemble
-import time
-
-
-
 from anchor2 import TabularExplainer
 
 FILE_PATH = os.path.dirname(os.path.realpath(__file__))

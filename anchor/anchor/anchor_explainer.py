@@ -1,6 +1,7 @@
+from typing import Callable as _Callable
+
 import numpy as _np
 
-from typing import Callable as _Callable
 from .anchor_explanation import AnchorExplanation as _AnchorExplanation
 from .anchor_tabular import AnchorTabularExplainer as _AnchorTabularExplainer
 

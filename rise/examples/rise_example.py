@@ -1,10 +1,11 @@
+import os
+import sys
+
 import numpy as np
 from keras import backend as K
 from keras.applications.resnet50 import ResNet50, preprocess_input, decode_predictions
 from keras.preprocessing import image
 from matplotlib import pyplot as plt
-import os
-import sys
 
 sys.path.append("../../")
 from rise.rise import RiseImageExplainer

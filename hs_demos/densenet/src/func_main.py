@@ -1,16 +1,15 @@
 import hydro_serving_grpc as hs
 import numpy as np
-from keras.models import load_model
-from keras.applications import DenseNet201
 import tensorflow as tf
+from keras.applications import DenseNet201
 
 
 def extract_value(proto):
     return np.array(proto.double_val, dtype='float64').reshape((-1, 224, 224, 3))
 
 
-# mobile_net = DenseNet201(weights="/mode/files/densenet201_weights_tf_dim_ordering_tf_kernels.h5")
-dnet = DenseNet201()
+dnet = DenseNet201(weights="/model/files/densenet201_weights_tf_dim_ordering_tf_kernels.h5")
+# dnet = DenseNet201()
 
 global graph
 graph = tf.get_default_graph()

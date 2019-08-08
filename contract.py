@@ -1,9 +1,11 @@
 from typing import Dict, Tuple
+
 import hydro_serving_grpc as hs_grpc
 import pandas as pd
 import yaml
-
 from google.protobuf.json_format import MessageToDict
+
+from utils import AnyDimSize
 
 try:
     from yaml import CLoader as Loader, CDumper as Dumper
@@ -198,8 +200,8 @@ class HSContract:
 
             if not HSContract.dtype_compliant(self.input_dtypes[tensor_name], x[tensor_name].dtype):
                 valid = False
-                tensor_dtypes_error_message += f" Tensor \"{tensor_name}\" is {x[tensor_name].shape}," \
-                    f" expected {self.input_shapes[tensor_name]}"
+                tensor_dtypes_error_message += f" Tensor \"{tensor_name}\" is {x[tensor_name].dtype}," \
+                    f" expected {self.input_dtypes[tensor_name]}"
 
         error_message += tensor_shapes_error_message
         error_message += tensor_dtypes_error_message
@@ -244,9 +246,11 @@ class HSContract:
     def shape_compliant(contract_shape: Tuple, tensor_shape: Tuple) -> bool:
         if len(tensor_shape) == 0:
             # scalar input can be used in following scenarios
-            return contract_shape == (-1, 1) or contract_shape == (1,) or contract_shape == tuple()
+            return contract_shape == (1,) or contract_shape == tuple()
+
         if len(contract_shape) == len(tensor_shape):
-            return all([s1 == -1 or s1 == s2 for s1, s2 in zip(contract_shape, tensor_shape)])
+            possible_contract_shape = tuple([AnyDimSize if s == -1 else s for s in contract_shape])
+            return possible_contract_shape == tensor_shape
         else:
             return False
 

@@ -1,6 +1,6 @@
-from hydro_serving_grpc.reqstore import reqstore_client
 import numpy as np
 import pandas as pd
+from hydro_serving_grpc.reqstore import reqstore_client
 
 
 def get_reqstore_request_tensors(model_contract, rclient: reqstore_client.ReqstoreClient, folder, timestamp, uid: int):
@@ -60,6 +60,7 @@ AnyDimSize = AlwaysTrueObj()
 
 def contract_is_supported_by_rise(contract):
     # TODO check for tensor profiling type
+    # FIXME Add check for dtypes. Supported - int's, float's
 
     if 'probabilities' not in contract.output_names:
         return False
@@ -82,6 +83,7 @@ def contract_is_supported_by_rise(contract):
 
 
 def contract_is_supported_by_anchor(contract):
+    # FIXME Add check for dtypes. Supported - int's, float's
     if 'classes' not in contract.output_names:
         return False
 

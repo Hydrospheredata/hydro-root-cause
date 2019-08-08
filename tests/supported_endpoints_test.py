@@ -1,6 +1,7 @@
 import unittest
-from utils import get_supported_endpoints
+
 from contract import HSContract
+from utils import get_supported_endpoints
 
 with open("../hs_demos/adult/serving.yaml") as f:
     columnar_contract = HSContract.load(f)

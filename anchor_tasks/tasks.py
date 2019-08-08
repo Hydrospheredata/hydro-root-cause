@@ -13,8 +13,8 @@ from app import celery, rs_client, hs_client, MONGO_PORT, MONGO_URL
 from client import HydroServingServable
 
 
-@celery.task(bind=True)
-def anchor_task(self, explanation_id: str):
+@celery.task
+def anchor_task(explanation_id: str):
     #  TODO if mongo anchor cache is available we can check anchor presence by binary mask
     #  ex: db.collection.save({ _id: 1, a: 54, binaryValueofA: "00110110" })
     #  ex: db.collection.find( { a: { $bitsAllSet: [ 1, 5 ] } } )

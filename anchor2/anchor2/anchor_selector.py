@@ -1,13 +1,14 @@
-from typing import List, Tuple
-import numpy as np
-
 from functools import partial
+from itertools import compress
+from typing import List, Tuple
+
+import numpy as np
+from loguru import logger
+
 from .explanation import Explanation
 from .multi_armed_bandit_solver import BernoulliArm, KullbackLeiblerLUCB
 from .tabular_explanation import TabularExplanation, EqualityPredicate, InequalityPredicate, GreaterOrEqualPredicate, \
     LessPredicate
-from itertools import compress
-from loguru import logger
 
 
 class AnchorSelectionStrategy:

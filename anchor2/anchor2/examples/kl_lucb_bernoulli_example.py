@@ -1,6 +1,7 @@
-from anchor2.anchor2.multi_armed_bandit_solver import KullbackLeiblerLUCB, BernoulliArm
 from functools import partial
+
 import numpy as np
+from anchor2.anchor2.multi_armed_bandit_solver import KullbackLeiblerLUCB, BernoulliArm
 
 
 def bernoulli_draw(p):

@@ -1,4 +1,4 @@
-from typing import Dict, Tuple, Callable, TypeVar, Sequence
+from typing import Tuple, Callable, TypeVar, Sequence
 
 import numpy as np
 from skimage.transform import resize

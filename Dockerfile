@@ -21,6 +21,7 @@ WORKDIR /app
 
 COPY anchor2/ /app/anchor2
 COPY rise/ /app/rise
+
 RUN pip3 install anchor2/ rise/
 
 COPY . /app
