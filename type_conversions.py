@@ -76,3 +76,49 @@ NP_DTYPE_TO_ARG_NAME = {
     np.void: None
 
 }
+
+NAME_TO_DTYPES = {
+    "string": DT_STRING,
+    "bool": DT_BOOL,
+
+    "float16": DT_HALF,
+    "half": DT_HALF,
+    "float32": DT_FLOAT,
+    "float64": DT_DOUBLE,
+    "double": DT_DOUBLE,
+
+    "int8": DT_INT8,
+    "int16": DT_INT16,
+    "int32": DT_INT32,
+    "int64": DT_INT64,
+
+    "uint8": DT_UINT8,
+    "uint16": DT_UINT16,
+    "uint32": DT_UINT32,
+    "uint64": DT_UINT64,
+
+    "complex64": DT_COMPLEX64,
+    "complex128": DT_COMPLEX128,
+}
+
+DTYPE_TO_NAMES = {
+    DT_STRING: "string",
+    DT_BOOL: "bool",
+
+    DT_HALF: "float16",
+    DT_FLOAT: "float32",
+    DT_DOUBLE: "float64",
+
+    DT_INT8: "int8",
+    DT_INT16: "int16",
+    DT_INT32: "int32",
+    DT_INT64: "int64",
+
+    DT_UINT8: "uint8",
+    DT_UINT16: "uint16",
+    DT_UINT32: "uint32",
+    DT_UINT64: "uint64",
+
+    DT_COMPLEX64: "complex64",
+    DT_COMPLEX128: "complex128"
+}

@@ -10,7 +10,7 @@ try:
 except ImportError:
     from yaml import Loader, Dumper
 
-from type_conversions import HS_TO_NP_DTYPE, NP_TO_HS_DTYPE, NP_DTYPE_TO_ARG_NAME, STR_TO_HS_DTYPE, HS_DTYPE_TO_STR
+from type_conversions import HS_TO_NP_DTYPE, NP_TO_HS_DTYPE, NP_DTYPE_TO_ARG_NAME, STR_TO_HS_DTYPE, HS_DTYPE_TO_STR, NAME_TO_DTYPES
 import numpy as np
 
 
@@ -131,8 +131,9 @@ class HSContract:
                 shape = tuple()
             else:
                 shape = tuple(t_dict['shape'])
+
             return {"name": t_name,
-                    "dtype": HS_TO_NP_DTYPE[STR_TO_HS_DTYPE[t_dict['type']]],
+                    "dtype": HS_TO_NP_DTYPE[NAME_TO_DTYPES[t_dict['type']]],
                     "shape": shape}
 
         contract_dict = {}

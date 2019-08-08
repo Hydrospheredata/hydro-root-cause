@@ -46,6 +46,6 @@ contract:
       shape: scalar
       type: int64
   outputs:
-    prediction:
+    classes:
       shape: scalar
       type: int64
