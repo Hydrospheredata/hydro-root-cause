@@ -13,14 +13,14 @@ from client import HydroServingClient
 
 hs_client = HydroServingClient("localhost:9090")
 adult_model = hs_client.get_model("adult-tensor", 1)
-print("adult_model: ", adult_model)
+print("mobile_net_035: ", adult_model)
 
 print("RootCause Hello: ", requests.get("http://localhost/rootcause/").text)
 
 df = pd.read_csv("../hs_demos/data/test_adult.csv")
 print("Loaded adult dataset ", df.shape)
 
-print("Deploy adult_servable and send single sample batches")
+print("Deploy mobilenet_servable and send single sample batches")
 adult_servable = hs_client.deploy_servable("adult-tensor", 1)
 sleep(1)  # Bug - servable is not detected fast enough
 for _ in tqdm(range(10)):
@@ -39,7 +39,7 @@ ts = subsample[0].ts
 uid = subsample[0].entries[0].uid
 print("Explained sample reqstore attributes - ", folder, ts, uid)
 
-print("Deploy adult_servable and send a lot of batches")
+print("Deploy mobilenet_servable and send a lot of batches")
 adult_servable = hs_client.deploy_servable("adult-tensor", 1)
 sleep(1)  # Bug - servable is not detected fast enough
 for i in tqdm(range(df.shape[0] // 100 - 1)):

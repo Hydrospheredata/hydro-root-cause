@@ -51,23 +51,31 @@ def rise_task(self, explanation_id: str):
     # Create temporary servable
     temp_servable_copy: HydroServingServable = hs_client.deploy_servable(model_name, model_version)
 
+    explained_image_probas = temp_servable_copy(image)['probabilities'][0]  # Reduce batch dim
+    top_10_classes = explained_image_probas.argsort()[::-1][:10]
+    top_10_probas = explained_image_probas[top_10_classes]
+
     input_tensor_name = temp_servable_copy.contract.input_names[0]
 
-    input_dims = temp_servable_copy.contract.input_shapes[input_tensor_name]
-    input_dims = input_dims[1:]  # Remove 0 dimension as batch dim
+    input_shape = temp_servable_copy.contract.input_shapes[input_tensor_name]
+    input_shape = input_shape[1:]  # Remove 0 dimension as batch dim and
 
-    if len(input_dims) == 2:
+    if len(input_shape) == 2:
         is_single_channel = True
-    elif len(input_dims) == 3:
+    elif len(input_shape) == 3:
         is_single_channel = False
-    else:
-        raise ValueError(f"Unable to explain image models with shape {input_dims}")
+        input_shape = input_shape[:2]
 
-    rise_config = {"input_size": input_dims,
-                   "number_of_masks": 1000,
-                   "mask_granularity": 10,
+    else:
+        raise ValueError(f"Unable to explain image models with shape {input_shape}")
+
+    rise_config = {"input_size": input_shape,
+                   "number_of_masks": 100,
+                   "mask_granularity": 20,
                    "mask_density": 0.5,
                    "single_channel": is_single_channel}
+
+    logger.info(f"Rise config is: {str(rise_config)}")
 
     rise_explainer = RiseImageExplainer()
 
@@ -84,23 +92,24 @@ def rise_task(self, explanation_id: str):
     def state_updater(x):
         self.update_state(state='STARTED', meta={'progress': x})
 
-    saliency_map: np.array = rise_explainer.explain(image, state_updater=state_updater)
-
-    # Since we do not need precise saliency maps, we can round them
-    np.round(saliency_map, 3, out=saliency_map)
+    saliency_maps: np.array = rise_explainer.explain(image, state_updater=state_updater)
 
     # normalize saliency map to (0;1)
-    _min = np.min(saliency_map)
-    _max = np.max(saliency_map)
-    saliency_map = (saliency_map - _min) / (_max - _min)
+    _min = np.min(saliency_maps)
+    _max = np.max(saliency_maps)
+    saliency_maps = (saliency_maps - _min) / (_max - _min)
 
-    np.rint(saliency_map * 255, out=saliency_map)  # Round to int pixel values
-    saliency_map = saliency_map.astype(np.uint8)  # Use corresponding dtype
+    np.rint(saliency_maps * 255, out=saliency_maps)  # Round to int pixel values
+    saliency_maps = saliency_maps.astype(np.uint8)  # Use corresponding dtype
+    saliency_maps = saliency_maps.reshape((-1, saliency_maps.shape[1] * saliency_maps.shape[2]))  # Flatten masks
 
-    result_json = {"masks": saliency_map.tolist()}
+    top_10_saliency_maps = saliency_maps[top_10_classes]
+
+    result = [{"mask": m, "class": c, "probability": p} for m, c, p in
+              zip(top_10_saliency_maps.tolist(), top_10_classes.tolist(), top_10_probas.tolist())]
 
     # Store explanation in MongoDB
-    db.rise_explanations.update_one({"_id": explanation_id}, {"$set": {'result': result_json,
+    db.rise_explanations.update_one({"_id": explanation_id}, {"$set": {'result': result,
                                                                        "completed_at": datetime.datetime.now()}})
 
     logger.info(f"Finished task to explain {model_name}_{model_version} with rise")

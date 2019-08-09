@@ -98,9 +98,6 @@ def fetch_result(result_id, method):
     explanation = collection.find_one({"_id": objectid.ObjectId(result_id)})
     del explanation['_id']
 
-    if method == "rise":
-        explanation['result']['masks'] = str(explanation['result']['masks'])
-
     return jsonify(explanation)
 
 

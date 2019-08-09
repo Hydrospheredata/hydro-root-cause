@@ -54,6 +54,7 @@ def anchor_task(explanation_id: str):
         raise ValueError("Request has to have a single sample")
 
     x: np.ndarray = input_array[0]
+    logger.debug(f"Restored X shape to explain {x.shape}")
 
     # Create temporary servable, so main servable won't be affected
     temp_servable_copy: HydroServingServable = hs_client.deploy_servable(model_name, model_version)
