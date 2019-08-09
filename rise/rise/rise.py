@@ -28,10 +28,9 @@ class RiseImageExplainer:
         :param prediction_fn: function which takes np.array with shape (batch_size, input_size[0], input_size[1], 3)
          and returns predicted labels. In most cases this will be `model.predict` method.
         :param input_size: Tuple with image width and height in pixels
-        :param class_names: Mapping from class_id to class model_name. class_id has to be the result type of prediction_fn
         :param number_of_masks: Number of masks generated and evaluated by the explainer
         :param mask_granularity: Parameter specifies how many cells will be in one masks. Mask is a [mask_granularity df mask_granularity]
-        grid.
+        grid. If mask granularity is a float between 0 and 1 - then number of cells is calculated as max(mask_granularity * input_size)
         :param mask_density: Parameter specifies how many cells will be present in the mask. More dense the matrix will be, more parts of
         the original image will be present after its multiplication with mask.
         """
@@ -39,13 +38,14 @@ class RiseImageExplainer:
             raise ValueError("Invalid mask_density, mask density belongs to (0, 1)")
         if number_of_masks < 1:
             raise ValueError("Invalid number of masks, please specify positive integer)")
-        if not (1 < mask_granularity < min(input_size)):
-            raise ValueError("Invalid mask_granularity, mask_granularity belongs to (1, min(input_size))")
+        if min(input_size) < mask_granularity < 0:
+            raise ValueError("Invalid mask_granularity, mask_granularity belongs to (1, min(input_size)) or to (0; 1)")
+
         if min(input_size) < 1.0:
             raise ValueError("Invalid input size")
 
         self.number_of_masks = number_of_masks
-        self.mask_granularity = mask_granularity
+        self.mask_granularity = mask_granularity if mask_granularity > 1 else np.floor(np.max(np.array(input_size) * mask_granularity))
         self.mask_density = mask_density
         self.input_size = input_size
         self.prediction_fn = prediction_fn
@@ -74,7 +74,7 @@ class RiseImageExplainer:
             x = np.random.randint(0, cell_size[0])
             y = np.random.randint(0, cell_size[1])
             # Linear upsampling and cropping
-            masks[i, :, :] = resize(grid[i], up_size, order=1, mode='reflect', )[x:x + self.input_size[0], y:y + self.input_size[1]]
+            masks[i, :, :] = resize(grid[i], up_size)[x:x + self.input_size[0], y:y + self.input_size[1]]
 
         if self.single_channel:
             masks = masks.reshape(-1, *self.input_size)
@@ -104,7 +104,7 @@ class RiseImageExplainer:
 
             # Propagate feedback about state
             if state_updater and i + batch_size < self.number_of_masks:
-                state_updater((i + batch_size) / self.number_of_masks)
+                state_updater(np.round((i + batch_size) / self.number_of_masks, 4))
 
         predictions = np.concatenate(predictions)
         saliency_map = predictions.T.dot(self.masks.reshape(self.number_of_masks, -1)).reshape(-1, *self.input_size)

@@ -37,7 +37,9 @@ mobilenet_servable.delete()
 
 rs_client = reqstore_client.ReqstoreClient("localhost:9090", insecure=True)
 subsample = list(rs_client.subsampling(str(mobile_net_035.id), 10))
+
 x = mobile_net_035.contract.decode_request(subsample[0].entries[0].request)
+
 folder = mobile_net_035.id
 ts = subsample[0].ts
 uid = subsample[0].entries[0].uid

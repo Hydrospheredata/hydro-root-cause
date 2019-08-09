@@ -62,6 +62,7 @@ def hello():
 
 @app.route("/supported_methods", methods=['GET'])
 def get_supported_methods():
+    # TODO add jsonschema validation
     model_json = request.get_json()
     model_name = model_json['model']['name']
     model_version = model_json['model']['version']
@@ -117,6 +118,8 @@ def fetch_result(result_id, method):
 
 @app.route("/anchor", methods=['POST'])
 def anchor():
+    # TODO add jsonschema validation
+
     inp_json = request.get_json()
     logger.info(f"Received request to explain {str(inp_json['model'])} with anchor")
 
@@ -130,6 +133,8 @@ def anchor():
 
 @app.route("/rise", methods=['POST'])
 def rise():
+    # TODO add jsonschema validation
+
     inp_json = request.get_json()
     inp_json['created_at'] = datetime.datetime.now()
 
