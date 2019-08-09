@@ -51,6 +51,7 @@ def rise_task(self, explanation_id: str):
     # Create temporary servable
     temp_servable_copy: HydroServingServable = hs_client.deploy_servable(model_name, model_version)
 
+    # FIXME extract explained_image_probas from reqstore response
     explained_image_probas = temp_servable_copy(image)['probabilities'][0]  # Reduce batch dim
     top_10_classes = explained_image_probas.argsort()[::-1][:10]
     top_10_probas = explained_image_probas[top_10_classes]
@@ -63,7 +64,13 @@ def rise_task(self, explanation_id: str):
     if len(input_shape) == 2:
         is_single_channel = True
     elif len(input_shape) == 3:
-        is_single_channel = False
+        if input_shape[-1] == 1:
+            is_single_channel = True
+        elif input_shape == 3:
+            is_single_channel = False
+        else:
+            raise ValueError(f"Invalid number of channels, shape: {input_shape}")
+
         input_shape = input_shape[:2]
 
     else:
