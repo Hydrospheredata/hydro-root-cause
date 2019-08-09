@@ -70,9 +70,9 @@ def rise_task(self, explanation_id: str):
         raise ValueError(f"Unable to explain image models with shape {input_shape}")
 
     rise_config = {"input_size": input_shape,
-                   "number_of_masks": 100,
-                   "mask_granularity": 20,
-                   "mask_density": 0.5,
+                   "number_of_masks": 1500,
+                   "mask_granularity": 15,
+                   "mask_density": 0.4,
                    "single_channel": is_single_channel}
 
     logger.info(f"Rise config is: {str(rise_config)}")
