@@ -1,4 +1,7 @@
 .git
+.ipynb_checkpoints
 .dockerignore
 anchor
 examples
+hs_demos
+demos

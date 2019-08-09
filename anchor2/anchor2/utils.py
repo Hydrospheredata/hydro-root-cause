@@ -1,11 +1,9 @@
-from typing import List, Dict
-
-import numpy as np
-from sklearn.preprocessing import KBinsDiscretizer, OneHotEncoder, FunctionTransformer
 from itertools import chain
+from typing import Dict
+
+from sklearn.preprocessing import KBinsDiscretizer, OneHotEncoder, FunctionTransformer
 
 from .tabular_explanation import *
-from loguru import logger
 
 
 class DiscretizerTransformer:

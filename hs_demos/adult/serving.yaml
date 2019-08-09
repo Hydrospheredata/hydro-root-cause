@@ -8,7 +8,7 @@ runtime: "hydrosphere/serving-runtime-python-3.6:0.1.2-rc0"
 install-command: "pip install -r requirements.txt"
 contract:
   name: "predict"
-  inputs: 
+  inputs:
     "Age":
       shape: [-1, 1]
       type: int64
@@ -46,6 +46,6 @@ contract:
       shape: [-1, 1]
       type: int64
   outputs:
-    "Prediction":
+    classes:
       shape: [-1, 1]
       type: int64

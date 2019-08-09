@@ -1,14 +1,15 @@
+import os
+import unittest
 from unittest import TestCase
+
 import numpy as np
 import pandas as pd
-import anchor
 import sklearn
-from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
-import unittest
-import os
-import timeout_decorator
+
+import anchor
 
 FILE_PATH = os.path.dirname(os.path.realpath(__file__))
 

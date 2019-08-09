@@ -1,9 +1,8 @@
 import unittest
-import numpy as np
-from sklearn.preprocessing import OneHotEncoder
-from anchor2.anchor2.utils import DiscretizerTransformer
-
 import warnings
+
+import numpy as np
+from anchor2.utils import DiscretizerTransformer
 
 
 class TestTabularExplanations(unittest.TestCase):

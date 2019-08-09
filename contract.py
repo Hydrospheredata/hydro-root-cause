@@ -1,16 +1,18 @@
 from typing import Dict, Tuple
+
 import hydro_serving_grpc as hs_grpc
 import pandas as pd
 import yaml
-
 from google.protobuf.json_format import MessageToDict
+
+from utils import AnyDimSize
 
 try:
     from yaml import CLoader as Loader, CDumper as Dumper
 except ImportError:
     from yaml import Loader, Dumper
 
-from type_conversions import HS_TO_NP_DTYPE, NP_TO_HS_DTYPE, NP_DTYPE_TO_ARG_NAME, STR_TO_HS_DTYPE, HS_DTYPE_TO_STR
+from type_conversions import HS_TO_NP_DTYPE, NP_TO_HS_DTYPE, NP_DTYPE_TO_ARG_NAME, STR_TO_HS_DTYPE, HS_DTYPE_TO_STR, NAME_TO_DTYPES
 import numpy as np
 
 
@@ -131,8 +133,9 @@ class HSContract:
                 shape = tuple()
             else:
                 shape = tuple(t_dict['shape'])
+
             return {"name": t_name,
-                    "dtype": HS_TO_NP_DTYPE[STR_TO_HS_DTYPE[t_dict['type']]],
+                    "dtype": HS_TO_NP_DTYPE[NAME_TO_DTYPES[t_dict['type']]],
                     "shape": shape}
 
         contract_dict = {}
@@ -197,11 +200,11 @@ class HSContract:
 
             if not HSContract.dtype_compliant(self.input_dtypes[tensor_name], x[tensor_name].dtype):
                 valid = False
-                tensor_dtypes_error_message += f" Tensor \"{tensor_name}\" is {x[tensor_name].shape}," \
-                    f" expected {self.input_shapes[tensor_name]}"
+                tensor_dtypes_error_message += f" Tensor \"{tensor_name}\" is {x[tensor_name].dtype}," \
+                    f" expected {self.input_dtypes[tensor_name]}"
 
         error_message += tensor_shapes_error_message
-        error_message += tensor_shapes_error_message
+        error_message += tensor_dtypes_error_message
 
         return valid, error_message
 
@@ -243,9 +246,11 @@ class HSContract:
     def shape_compliant(contract_shape: Tuple, tensor_shape: Tuple) -> bool:
         if len(tensor_shape) == 0:
             # scalar input can be used in following scenarios
-            return contract_shape == (-1, 1) or contract_shape == (1,) or contract_shape == tuple()
+            return contract_shape == (1,) or contract_shape == tuple()
+
         if len(contract_shape) == len(tensor_shape):
-            return all([s1 == -1 or s1 == s2 for s1, s2 in zip(contract_shape, tensor_shape)])
+            possible_contract_shape = tuple([AnyDimSize if s == -1 else s for s in contract_shape])
+            return possible_contract_shape == tensor_shape
         else:
             return False
 

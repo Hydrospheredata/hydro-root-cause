@@ -7,7 +7,7 @@ from loguru import logger
 
 from .anchor_selector import BeamAnchorSearch, GreedyAnchorSearch
 from .tabular_explanation import TabularExplanation
-from .utils import DiscretizerTransformer, ExplanationTranslator
+from .utils import DiscretizerTransformer
 
 
 class AnchorExplainer(ABC):
@@ -62,14 +62,14 @@ class TabularExplainer(AnchorExplainer):
         self.data = data
         self.discretized_data = self.discretizer.transform(data)
         self.label_decoders = label_decoders
-        self.translators = self.discretizer.map_translators(label_decoders, self.feature_names)
+        # self.translators = self.discretizer.map_translators(label_decoders, self.feature_names)
 
     def explain(self, x: np.array,
                 classifier_fn,
                 strategy: str = "kl-lucb",
                 threshold=0.95,
                 selector_params: Dict = {},
-                verbose=False) -> TabularExplanation:
+                verbose=True) -> TabularExplanation:
 
         logger.disable("anchor2")
 
@@ -98,8 +98,8 @@ class TabularExplainer(AnchorExplainer):
                                                                     **selector_params
                                                                     )
 
-        translator = ExplanationTranslator()
-        translator.fit(self.translators, self.ordinal_features_idx)
-        explanation.str = translator.transform(explanation)
+        # translator = ExplanationTranslator()
+        # translator.fit(self.translators, self.ordinal_features_idx)
+        # explanation.str = translator.transform(explanation)
 
         return explanation

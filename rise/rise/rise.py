@@ -1,4 +1,4 @@
-from typing import Dict, Tuple, Callable, TypeVar, Sequence
+from typing import Tuple, Callable, TypeVar, Sequence
 
 import numpy as np
 from skimage.transform import resize
@@ -18,7 +18,7 @@ class RiseImageExplainer:
             mask_granularity: int = 7,
             mask_density: float = 0.5,
             single_channel=False,
-            channels_last=False) -> 'RiseImageExplainer':
+            channels_last=True) -> 'RiseImageExplainer':
         """
 
         :param channels_last:
