@@ -66,7 +66,7 @@ def rise_task(self, explanation_id: str):
     elif len(input_shape) == 3:
         if input_shape[-1] == 1:
             is_single_channel = True
-        elif input_shape == 3:
+        elif input_shape[-1] == 3:
             is_single_channel = False
         else:
             raise ValueError(f"Invalid number of channels, shape: {input_shape}")
