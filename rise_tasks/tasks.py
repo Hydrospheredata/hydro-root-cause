@@ -7,14 +7,14 @@ from pymongo import MongoClient
 from pymongo.database import Database
 
 import utils
-from app import celery, rs_client, hs_client, MONGO_PORT, MONGO_URL
+from app import celery, rs_client, hs_client, get_mongo_client
 from client import HydroServingServable
 from rise.rise import RiseImageExplainer
 
 
 @celery.task(bind=True)
 def rise_task(self, explanation_id: str):
-    mongo_client: MongoClient = MongoClient(host=MONGO_URL, port=MONGO_PORT)
+    mongo_client: MongoClient = get_mongo_client()
     db: Database = mongo_client['root_cause']
 
     explanation_id = objectid.ObjectId(explanation_id)

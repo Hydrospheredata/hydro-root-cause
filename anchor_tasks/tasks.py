@@ -9,7 +9,7 @@ from pymongo import MongoClient
 from pymongo.database import Database
 
 import utils
-from app import celery, rs_client, hs_client, MONGO_PORT, MONGO_URL
+from app import celery, rs_client, hs_client, get_mongo_client
 from client import HydroServingServable
 
 
@@ -19,7 +19,7 @@ def anchor_task(explanation_id: str):
     #  ex: db.collection.save({ _id: 1, a: 54, binaryValueofA: "00110110" })
     #  ex: db.collection.find( { a: { $bitsAllSet: [ 1, 5 ] } } )
 
-    mongo_client: MongoClient = MongoClient(host=MONGO_URL, port=MONGO_PORT)
+    mongo_client: MongoClient = get_mongo_client()
     db: Database = mongo_client['root_cause']
 
     explanation_id = objectid.ObjectId(explanation_id)

@@ -17,8 +17,19 @@ SERVING_URL = os.getenv("SERVING_URL", "managerui:9090")
 
 MONGO_URL = os.getenv("MONGO_URL", "mongodb")
 MONGO_PORT = int(os.getenv("MONGO_PORT", 27017))
+MONGO_AUTH_DB = os.getenv("MONGO_AUTH_DB", "admin")
+MONGO_USER = os.getenv("MONGO_USER")
+MONGO_PASS = os.getenv("MONGO_PASS")
 
-mongo_client = MongoClient(host=MONGO_URL, port=MONGO_PORT, maxPoolSize=200)
+
+def get_mongo_client():
+    return MongoClient(host=MONGO_URL, port=MONGO_PORT, maxPoolSize=200,
+                       username=MONGO_USER, password=MONGO_PASS,
+                       authSource=MONGO_AUTH_DB)
+
+
+mongo_client = get_mongo_client()
+
 db = mongo_client['root_cause']
 
 hs_client = HydroServingClient(SERVING_URL)
@@ -28,8 +39,11 @@ app = Flask(__name__)
 
 CORS(app, expose_headers=['location'])
 
-app.config['CELERY_BROKER_URL'] = f"mongodb://{MONGO_URL}:{MONGO_PORT}/celery_broker"
-app.config['CELERY_RESULT_BACKEND'] = f"mongodb://{MONGO_URL}:{MONGO_PORT}/celery_backend"
+connection_string = f"mongodb://{MONGO_URL}:{MONGO_PORT}"
+if MONGO_USER is not None and MONGO_PASS is not None:
+    connection_string = f"mongodb://{MONGO_USER}:{MONGO_PASS}@{MONGO_URL}:{MONGO_PORT}"
+app.config['CELERY_BROKER_URL'] = f"{connection_string}/celery_broker?authSource={MONGO_AUTH_DB}"
+app.config['CELERY_RESULT_BACKEND'] = f"{connection_string}/celery_backend?authSource={MONGO_AUTH_DB}"
 
 celery = Celery(app.name,
                 broker=app.config['CELERY_BROKER_URL'],
