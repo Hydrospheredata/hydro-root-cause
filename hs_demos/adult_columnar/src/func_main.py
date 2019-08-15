@@ -24,4 +24,4 @@ def predict(**kwargs):
         tensor_shape=hs.TensorShapeProto(
             dim=[hs.TensorShapeProto.Dim(size=-1), hs.TensorShapeProto.Dim(size=1)]))
 
-    return hs.PredictResponse(outputs={"Prediction": response})
+    return hs.PredictResponse(outputs={"classes": response})

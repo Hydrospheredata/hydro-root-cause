@@ -5,7 +5,13 @@ import pandas as pd
 import yaml
 from google.protobuf.json_format import MessageToDict
 
-from utils import AnyDimSize
+
+class AlwaysTrueObj(object):
+    def __eq__(self, other):
+        return True
+
+
+AnyDimSize = AlwaysTrueObj()
 
 try:
     from yaml import CLoader as Loader, CDumper as Dumper
@@ -244,9 +250,12 @@ class HSContract:
 
     @staticmethod
     def shape_compliant(contract_shape: Tuple, tensor_shape: Tuple) -> bool:
-        if len(tensor_shape) == 0:
+        if len(contract_shape) == 0:
             # scalar input can be used in following scenarios
-            return contract_shape == (1,) or contract_shape == tuple()
+            if tensor_shape == tuple():
+                return True
+            else:
+                return max(tensor_shape) == 1  # All dimensions are equal to 1
 
         if len(contract_shape) == len(tensor_shape):
             possible_contract_shape = tuple([AnyDimSize if s == -1 else s for s in contract_shape])

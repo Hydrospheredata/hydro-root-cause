@@ -1,5 +1,5 @@
 kind: Model
-name: "adult-columnar"
+name: "adult_columnar"
 payload:
   - "src/"
   - "requirements.txt"

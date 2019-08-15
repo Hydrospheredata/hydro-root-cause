@@ -85,7 +85,7 @@ def compute_metrics_on_original_data(anchor, d_data, labels, target_label) -> Tu
     :return: (precision, coverage)
     """
 
-    data_with_anchor_index = np.apply_along_axis(anchor.check_against_sample, axis=1, arr=d_data)  # TODO: Candidate for profiling
+    data_with_anchor_index = np.apply_along_axis(anchor.check_against_sample, axis=1, arr=d_data)  # Candidate for profiling
     data_with_anchor = d_data[data_with_anchor_index]
     labels_with_anchor = labels[data_with_anchor_index]
 

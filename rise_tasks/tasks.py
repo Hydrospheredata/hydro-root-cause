@@ -1,4 +1,5 @@
 import datetime
+from typing import Callable
 
 import numpy as np
 from bson import objectid
@@ -9,7 +10,24 @@ from pymongo.database import Database
 import utils
 from app import celery, rs_client, hs_client, get_mongo_client
 from client import HydroServingServable
+from contract import HSContract
 from rise.rise import RiseImageExplainer
+
+
+def get_rise_classifier_fn(servable: HydroServingServable) -> Callable:
+    contract: HSContract = servable.contract
+    # Remember that rise supports single tensor contracts only
+    input_dtype = list(contract.input_dtypes.values())[0]
+
+    def classifier_fn(x: np.array):
+        if x.dtype != input_dtype:
+            x = x.astype(input_dtype)  # Cast data to correct type
+
+        return servable(x)['probabilities']
+
+    # TODO check for batch_dim shape
+
+    return classifier_fn
 
 
 @celery.task(bind=True)
@@ -38,7 +56,7 @@ def rise_task(self, explanation_id: str):
     if 'probabilities' not in model.contract.output_names:
         raise ValueError("Model have to return probabilities tensor")
 
-    input_tensors = utils.get_reqstore_request_tensors(model.contract, rs_client, folder, ts, reqstore_uid)
+    input_tensors = utils.get_reqstore_request(model.contract, rs_client, folder, ts, reqstore_uid)
 
     if len(input_tensors) != 1:
         raise ValueError("Request has to many input tensors")
@@ -51,7 +69,7 @@ def rise_task(self, explanation_id: str):
     # Create temporary servable
     temp_servable_copy: HydroServingServable = hs_client.deploy_servable(model_name, model_version)
 
-    # FIXME extract explained_image_probas from reqstore response
+    # FIXME instead of predicting extract explained_image_probas from reqstore response
     explained_image_probas = temp_servable_copy(image)['probabilities'][0]  # Reduce batch dim
     top_10_classes = explained_image_probas.argsort()[::-1][:10]
     top_10_probas = explained_image_probas[top_10_classes]
@@ -87,7 +105,7 @@ def rise_task(self, explanation_id: str):
     rise_explainer = RiseImageExplainer()
 
     # FIXME add classifier_fn support for contracts without batch dim
-    classifier_fn = lambda x: temp_servable_copy(x)['probabilities']
+    classifier_fn = get_rise_classifier_fn(temp_servable_copy)
 
     rise_explainer.fit(prediction_fn=classifier_fn,
                        input_size=rise_config['input_size'],

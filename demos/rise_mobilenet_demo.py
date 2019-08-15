@@ -28,7 +28,7 @@ img_arr = np.array(img, dtype=np.float)[np.newaxis]
 print("Deploy mobilenet servable and send our image")
 mobilenet_servable = hs_client.deploy_servable("mobilenet_v2_035", 1)
 try:
-    sleep(1)  # FIXME Bug - servable is not detected fast enough (gateway does not get info about servable launched by manager fast enough)
+    sleep(1)
     mobilenet_servable(img_arr, _profile=True)
 except:
     mobilenet_servable.delete()

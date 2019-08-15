@@ -1,5 +1,5 @@
 kind: Model
-name: "adult-tensor"
+name: "adult_tensor"
 payload:
   - "src/"
   - "requirements.txt"

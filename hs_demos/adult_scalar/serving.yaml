@@ -1,5 +1,5 @@
 kind: Model
-name: "adult-scalar"
+name: "adult_scalar"
 payload:
   - "src/"
   - "requirements.txt"
@@ -9,40 +9,40 @@ install-command: "pip install -r requirements.txt"
 contract:
   name: "predict"
   inputs:
-    age:
+    "Age":
       shape: scalar
       type: int64
-    wc:
+    "Workclass":
       shape: scalar
       type: int64
-    edu:
+    "Education":
       shape: scalar
       type: int64
-    marriage:
+    "Marital Status":
       shape: scalar
       type: int64
-    occupation:
+    "Occupation":
       shape: scalar
       type: int64
-    relationship:
+    "Relationship":
       shape: scalar
       type: int64
-    race:
+    "Race":
       shape: scalar
       type: int64
-    sex:
+    "Sex":
       shape: scalar
       type: int64
-    cg:
+    "Capital Gain":
       shape: scalar
       type: int64
-    cl:
+    "Capital Loss":
       shape: scalar
       type: int64
-    hpw:
+    "Hours per week":
       shape: scalar
       type: int64
-    country:
+    "Country":
       shape: scalar
       type: int64
   outputs:
