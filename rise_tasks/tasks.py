@@ -36,7 +36,7 @@ def rise_task(self, explanation_id: str):
     db: Database = mongo_client['root_cause']
 
     explanation_id = objectid.ObjectId(explanation_id)
-    job_json = db.rise_explanations.find_one_and_update({"_id": explanation_id},
+    job_json = db.rise.find_one_and_update({"_id": explanation_id},
                                                         {"$set": {"started_at": datetime.datetime.now()}})
 
     if 'result' in job_json:
@@ -134,7 +134,7 @@ def rise_task(self, explanation_id: str):
               zip(top_10_saliency_maps.tolist(), top_10_classes.tolist(), top_10_probas.tolist())]
 
     # Store explanation in MongoDB
-    db.rise_explanations.update_one({"_id": explanation_id}, {"$set": {'result': result,
+    db.rise.update_one({"_id": explanation_id}, {"$set": {'result': result,
                                                                        "completed_at": datetime.datetime.now()}})
 
     logger.info(f"Finished task to explain {model_name}_{model_version} with rise")

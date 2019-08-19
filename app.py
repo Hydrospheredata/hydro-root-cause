@@ -1,4 +1,5 @@
 import datetime
+import json
 import os
 
 from bson import objectid
@@ -6,6 +7,7 @@ from celery import Celery
 from flask import Flask, request, jsonify, url_for
 from flask_cors import CORS
 from hydro_serving_grpc.reqstore import reqstore_client
+from jsonschema import Draft7Validator
 from loguru import logger
 from pymongo import MongoClient
 
@@ -20,6 +22,10 @@ MONGO_PORT = int(os.getenv("MONGO_PORT", 27017))
 MONGO_AUTH_DB = os.getenv("MONGO_AUTH_DB", "admin")
 MONGO_USER = os.getenv("MONGO_USER")
 MONGO_PASS = os.getenv("MONGO_PASS")
+
+with open("./root_cause_request_json_schema.json") as f:
+    REQUEST_JSON_SCHEMA = json.load(f)
+    validator = Draft7Validator(REQUEST_JSON_SCHEMA)
 
 
 def get_mongo_client():
@@ -57,22 +63,55 @@ import rise_tasks
 
 @app.route("/")
 def hello():
-    return "hydro_root_cause_service"
+    return "Hi! I am RootCause Service"
+
+
+@app.route("/status")
+def get_instance_status():
+    req_json = request.get_json()
+    if not validator.is_valid(req_json):
+        error_message = "\n".join(validator.iter_errors(req_json))
+        return jsonify({"message": error_message}), 400
+
+    model_name = req_json['model']['name']
+    model_version = req_json['model']['version']
+    uid = req_json['explained_instance']['uid']
+    timestamp = req_json['explained_instance']['timestamp']
+
+    model = hs_client.get_model(model_name, model_version)
+
+    supported_endpoints = utils.get_supported_endpoints(model.contract)
+    logger.debug(f"Supported endpoints {supported_endpoints}")
+
+    rootcause_methods_statuses = []
+    for method in supported_endpoints:
+        response = {"method": method}
+        instance_doc = db[method].find_one({"explained_instance.uid": {"$eq": uid},
+                                            "explained_instance.timestamp": {"$eq": timestamp},
+                                            "model.name": {"$eq": model_name},
+                                            "model.version": {"$eq": model_version}})
+        if instance_doc is None:
+            response['status'] = {"state": "NOT_QUEUED"}
+        else:
+            task_id = instance_doc['celery_task_id']
+            response['status'] = get_task_status(task_id, method).get_json()
+        rootcause_methods_statuses.append(response)
+
+    return jsonify(rootcause_methods_statuses)
 
 
 @app.route("/supported_methods", methods=['GET'])
 def get_supported_methods():
-    # TODO add jsonschema validation
-    model_json = request.get_json()
-    model_name = model_json['model']['name']
-    model_version = model_json['model']['version']
+    req_json = request.get_json()
+    model_name = req_json['model']['name']
+    model_version = req_json['model']['version']
     model = hs_client.get_model(model_name, model_version)
     supported_endpoints = utils.get_supported_endpoints(model.contract)
-    return jsonify({"supported_endpoints": supported_endpoints})
+    return jsonify({"supported_methods": supported_endpoints})
 
 
-@app.route('/status/<method>/<task_id>', methods=["GET"])
-def task_status(task_id, method):
+@app.route('/task_status/<method>/<task_id>', methods=["GET"])
+def get_task_status(task_id, method):
     if method == "rise":
         task = rise_tasks.tasks.rise_task.AsyncResult(task_id)
     elif method == "anchor":
@@ -118,32 +157,44 @@ def fetch_result(result_id, method):
 
 @app.route("/anchor", methods=['POST'])
 def anchor():
-    # TODO add jsonschema validation
-
     inp_json = request.get_json()
+    if not validator.is_valid(inp_json):
+        error_message = "\n".join(validator.iter_errors(inp_json))
+        return jsonify({"message": error_message}), 400
+
     logger.info(f"Received request to explain {str(inp_json['model'])} with anchor")
 
     inp_json['created_at'] = datetime.datetime.now()
 
-    anchor_explanation_id = db.anchor_explanations.insert_one(inp_json).inserted_id
+    anchor_explanation_id = db.anchor.insert_one(inp_json).inserted_id
     task = anchor_tasks.tasks.anchor_task.delay(str(anchor_explanation_id))
 
-    return jsonify({}), 202, {'Location': '/rootcause' + url_for('task_status', task_id=task.id, _external=False, method="anchor")}
+    explanation_id = objectid.ObjectId(anchor_explanation_id)
+    db.anchor.find_one_and_update({"_id": explanation_id},
+                                  {"$set": {"celery_task_id": task.id}})
+
+    return jsonify({}), 202, {'Location': '/rootcause' + url_for('get_task_status', task_id=task.id, _external=False, method="anchor")}
 
 
 @app.route("/rise", methods=['POST'])
 def rise():
-    # TODO add jsonschema validation
-
     inp_json = request.get_json()
+    if not validator.is_valid(inp_json):
+        error_message = "\n".join(validator.iter_errors(inp_json))
+        return jsonify({"message": error_message}), 400
+
     inp_json['created_at'] = datetime.datetime.now()
 
     logger.info(f"Received request to explain {str(inp_json['model'])} with rise")
 
-    rise_explanation_id = db.rise_explanations.insert_one(inp_json).inserted_id
+    rise_explanation_id = db.rise.insert_one(inp_json).inserted_id
     task = rise_tasks.tasks.rise_task.delay(str(rise_explanation_id))
 
-    return jsonify({}), 202, {'Location': '/rootcause' + url_for('task_status', _external=False, task_id=task.id, method="rise")}
+    explanation_id = objectid.ObjectId(rise_explanation_id)
+    db.rise.find_one_and_update({"_id": explanation_id},
+                                {"$set": {"celery_task_id": task.id}})
+
+    return jsonify({}), 202, {'Location': '/rootcause' + url_for('get_task_status', _external=False, task_id=task.id, method="rise")}
 
 
 if __name__ == "__main__":

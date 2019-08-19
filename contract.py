@@ -92,7 +92,7 @@ class HSContract:
 
     def dump(self, f):
         """
-        Dump current contract into YAML file
+        Dump current contract into YAML f
         :param f:
         :return:
         """
@@ -128,7 +128,7 @@ class HSContract:
     @classmethod
     def load(cls, file):
         """
-        Load contract from YAML file
+        Load contract from YAML f
         :param file:
         :return:
         """

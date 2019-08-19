@@ -103,8 +103,8 @@ def anchor_task(explanation_id: str):
     db: Database = mongo_client['root_cause']
 
     explanation_id = objectid.ObjectId(explanation_id)
-    job_json = db.anchor_explanations.find_one_and_update({"_id": explanation_id},
-                                                          {"$set": {"started_at": datetime.datetime.now()}})
+    job_json = db.anchor.find_one_and_update({"_id": explanation_id},
+                                             {"$set": {"started_at": datetime.datetime.now()}})
 
     if 'result' in job_json:
         return str(explanation_id)
@@ -170,8 +170,8 @@ def anchor_task(explanation_id: str):
                    "precision": explanation.precision()}
 
     # Store explanation in MongoDB 'root_cause' db
-    db.anchor_explanations.update_one({"_id": explanation_id}, {"$set": {'result': result_json,
-                                                                         "completed_at": datetime.datetime.now()}})
+    db.anchor.update_one({"_id": explanation_id}, {"$set": {'result': result_json,
+                                                            "completed_at": datetime.datetime.now()}})
 
     logger.info(f"Finished task to explain {model_name}_{model_version} with anchor")
 

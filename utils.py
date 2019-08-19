@@ -131,7 +131,7 @@ def get_tabular_contract_type(contract: HSContract) -> TabularContractType:
 
 
 def contract_is_supported_by_anchor(contract):
-    # TODO check for tensor profiling type
+    # TODO check for tensor profiling type (?)
 
     if 'classes' not in contract.output_names:
         return False
@@ -151,7 +151,7 @@ def contract_is_supported_by_anchor(contract):
 
     # https://docs.scipy.org/doc/numpy/reference/generated/numpy.dtype.kind.html#numpy.dtype.kind
     tensor_dtypes = list(contract.input_dtypes.values())
-    if any([dt not in ("i", "u", "f") for dt in tensor_dtypes]):
+    if not all([dt not in ("i", "u", "f") for dt in tensor_dtypes]):
         return False
 
     return True

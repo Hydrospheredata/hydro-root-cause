@@ -2,7 +2,6 @@ from abc import abstractmethod
 from typing import Generator, List
 
 import numpy as np
-from loguru import logger
 
 from .explanation import Explanation, Predicate
 
@@ -16,7 +15,6 @@ class TabularExplanation(Explanation):
         """
         self.predicates: List[TabularPredicate] = []
         self.x = x
-        logger.info("Tabular Explanation initiated with explained sample ", x)
         self.predicate_generator = predicate_generator
         self._coverages = []
         self._precisions = []
