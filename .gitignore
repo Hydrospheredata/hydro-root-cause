@@ -132,7 +132,7 @@ fabric.properties
 # Editor-based Rest Client
 .idea/httpRequests
 
-# Android studio 3.1+ serialized cache file
+# Android studio 3.1+ serialized cache f
 .idea/caches/build_file_checksums.ser
 
 ### PyCharm+all Patch ###
@@ -235,7 +235,7 @@ ipython_config.py
 # pyenv
 .python-version
 
-# celery beat schedule file
+# celery beat schedule f
 celerybeat-schedule
 
 # SageMath parsed files
@@ -269,13 +269,13 @@ Thumbs.db
 ehthumbs.db
 ehthumbs_vista.db
 
-# Dump file
+# Dump f
 *.stackdump
 
-# Folder config file
+# Folder config f
 [Dd]esktop.ini
 
-# Recycle Bin used on file shares
+# Recycle Bin used on f shares
 $RECYCLE.BIN/
 
 # Windows Installer files

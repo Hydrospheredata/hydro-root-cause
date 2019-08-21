@@ -5,7 +5,13 @@ import pandas as pd
 import yaml
 from google.protobuf.json_format import MessageToDict
 
-from utils import AnyDimSize
+
+class AlwaysTrueObj(object):
+    def __eq__(self, other):
+        return True
+
+
+AnyDimSize = AlwaysTrueObj()
 
 try:
     from yaml import CLoader as Loader, CDumper as Dumper
@@ -66,7 +72,7 @@ class HSContract:
         for t in proto_contract_dict['inputs']:
             name = t['name']
             shape = tuple([int(s['size']) for s in t['shape'].get('dim', [])])
-            dtype = HS_TO_NP_DTYPE[STR_TO_HS_DTYPE[t['dtype']]]
+            dtype = (HS_TO_NP_DTYPE[STR_TO_HS_DTYPE[t['dtype']]])
             input_tensors.append({"name": name,
                                   "shape": shape,
                                   "dtype": dtype})
@@ -76,7 +82,7 @@ class HSContract:
         for t in proto_contract_dict['outputs']:
             name = t['name']
             shape = tuple([int(s['size']) for s in t['shape'].get('dim', [])])
-            dtype = HS_TO_NP_DTYPE[STR_TO_HS_DTYPE[t['dtype']]]
+            dtype = (HS_TO_NP_DTYPE[STR_TO_HS_DTYPE[t['dtype']]])
             output_tensors.append({"name": name,
                                    "shape": shape,
                                    "dtype": dtype})
@@ -86,7 +92,7 @@ class HSContract:
 
     def dump(self, f):
         """
-        Dump current contract into YAML file
+        Dump current contract into YAML f
         :param f:
         :return:
         """
@@ -122,7 +128,7 @@ class HSContract:
     @classmethod
     def load(cls, file):
         """
-        Load contract from YAML file
+        Load contract from YAML f
         :param file:
         :return:
         """
@@ -135,7 +141,7 @@ class HSContract:
                 shape = tuple(t_dict['shape'])
 
             return {"name": t_name,
-                    "dtype": HS_TO_NP_DTYPE[NAME_TO_DTYPES[t_dict['type']]],
+                    "dtype": (HS_TO_NP_DTYPE[NAME_TO_DTYPES[t_dict['type']]]),
                     "shape": shape}
 
         contract_dict = {}
@@ -244,9 +250,12 @@ class HSContract:
 
     @staticmethod
     def shape_compliant(contract_shape: Tuple, tensor_shape: Tuple) -> bool:
-        if len(tensor_shape) == 0:
+        if len(contract_shape) == 0:
             # scalar input can be used in following scenarios
-            return contract_shape == (1,) or contract_shape == tuple()
+            if tensor_shape == tuple():
+                return True
+            else:
+                return max(tensor_shape) == 1  # All dimensions are equal to 1
 
         if len(contract_shape) == len(tensor_shape):
             possible_contract_shape = tuple([AnyDimSize if s == -1 else s for s in contract_shape])
@@ -261,7 +270,7 @@ class HSContract:
         """
         input_dict = {}
         for k, v in MessageToDict(proto, preserving_proto_field_name=True)['inputs'].items():
-            dtype = HS_TO_NP_DTYPE[STR_TO_HS_DTYPE[v['dtype']]]
+            dtype = (HS_TO_NP_DTYPE[STR_TO_HS_DTYPE[v['dtype']]])
             value = proto.inputs[k].__getattribute__(NP_DTYPE_TO_ARG_NAME[dtype])
             if v['tensor_shape']:
                 shape = [int(s['size']) for s in v['tensor_shape']['dim']]
@@ -280,7 +289,7 @@ class HSContract:
         """
         output_dict = {}
         for k, v in MessageToDict(proto, preserving_proto_field_name=True)['outputs'].items():
-            dtype = HS_TO_NP_DTYPE[STR_TO_HS_DTYPE[v['dtype']]]
+            dtype = (HS_TO_NP_DTYPE[STR_TO_HS_DTYPE[v['dtype']]])
             value = proto.outputs[k].__getattribute__(NP_DTYPE_TO_ARG_NAME[dtype])
             if v['tensor_shape']:
                 shape = [int(s['size']) for s in v['tensor_shape']['dim']]

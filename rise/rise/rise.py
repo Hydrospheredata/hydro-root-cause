@@ -29,8 +29,8 @@ class RiseImageExplainer:
          and returns predicted labels. In most cases this will be `model.predict` method.
         :param input_size: Tuple with image width and height in pixels
         :param number_of_masks: Number of masks generated and evaluated by the explainer
-        :param mask_granularity: Parameter specifies how many cells will be in one masks. Mask is a [mask_granularity df mask_granularity]
-        grid. If mask granularity is a float between 0 and 1 - then number of cells is calculated as max(mask_granularity * input_size)
+        :param mask_granularity: Parameter specifies how many cells will be in one masks. Mask is a tensor of shape
+        [mask_granularity; mask_granularity].
         :param mask_density: Parameter specifies how many cells will be present in the mask. More dense the matrix will be, more parts of
         the original image will be present after its multiplication with mask.
         """
@@ -45,7 +45,7 @@ class RiseImageExplainer:
             raise ValueError("Invalid input size")
 
         self.number_of_masks = number_of_masks
-        self.mask_granularity = mask_granularity if mask_granularity > 1 else np.floor(np.max(np.array(input_size) * mask_granularity))
+        self.mask_granularity = mask_granularity
         self.mask_density = mask_density
         self.input_size = input_size
         self.prediction_fn = prediction_fn

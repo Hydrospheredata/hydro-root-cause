@@ -4,18 +4,9 @@ from joblib import load
 
 clf = load('/model/files/random-forest-adult.joblib')
 
-features = ['age',
-            'wc',
-            'edu',
-            'marriage',
-            'occupation',
-            'relationship',
-            'race',
-            'sex',
-            'cg',
-            'cl',
-            'hpw',
-            'country']
+features = ['Age', 'Workclass', 'Education', 'Marital Status', 'Occupation',
+            'Relationship', 'Race', 'Sex', 'Capital Gain', 'Capital Loss',
+            'Hours per week', 'Country']
 
 
 def extract_value(proto):
@@ -32,4 +23,4 @@ def predict(**kwargs):
         dtype=hs.DT_INT64,
         tensor_shape=hs.TensorShapeProto())
 
-    return hs.PredictResponse(outputs={"prediction": response})
+    return hs.PredictResponse(outputs={"classes": response})

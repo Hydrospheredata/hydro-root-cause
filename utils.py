@@ -1,22 +1,20 @@
+from enum import Enum
+
 import numpy as np
 import pandas as pd
 from hydro_serving_grpc.reqstore import reqstore_client
 
+from contract import HSContract
 
-def get_reqstore_request_tensors(model_contract, rclient: reqstore_client.ReqstoreClient, folder, timestamp, uid: int):
+
+def get_reqstore_request(model_contract, rclient: reqstore_client.ReqstoreClient, folder, timestamp, uid: int):
     request_response: reqstore_client.TsRecord = rclient.get(folder, timestamp, uid)
     request = request_response.entries[0].request
     input_tensors = model_contract.decode_request(request)
     return input_tensors
 
 
-def get_dataframe_subsample(rs_client, model, subsample_size=1000):
-    # Get subsample to work with
-    model_id = model.id
-    rs_entries = []
-    for r in rs_client.subsampling(str(model_id), amount=subsample_size):
-        rs_entries.extend(r.entries)
-
+def extract_subsample_from_columnar_reqstore_entries(rs_entries, model) -> pd.DataFrame:
     requests = [model.contract.decode_request(e.request) for e in rs_entries]
 
     # concat requests into dataframe format
@@ -36,18 +34,43 @@ def get_dataframe_subsample(rs_client, model, subsample_size=1000):
     return reqstore_data
 
 
-def get_tensor_subsample(rs_client, model, subsample_size=1000):
+def extract_subsample_from_scalar_reqstore_entries(rs_entries, model) -> pd.DataFrame:
+    requests = [model.contract.decode_request(e.request) for e in rs_entries]
+
+    # concat requests into dataframe format
+    rs = []
+    feature_order = model.contract.input_names
+    for r in requests:
+        column_arrays = []
+        for feature_name in feature_order:
+            column_arrays.append([r[feature_name]])
+        df = pd.DataFrame(np.hstack(column_arrays).reshape((1, -1)), columns=feature_order)
+        rs.append(df)
+    reqstore_data = pd.concat(rs)
+
+    # Sort columns according to feature names order
+    reqstore_data = reqstore_data.loc[:, model.contract.input_names]
+    reqstore_data.drop_duplicates(inplace=True)
+    return reqstore_data
+
+
+def extract_subsample_from_tensor_reqstore_entries(rs_entries, model) -> pd.DataFrame:
+    requests = [model.contract.decode_request(e.request)['input'] for e in rs_entries]
+    data = np.vstack(requests)
+    df = pd.DataFrame(data)
+    df.drop_duplicates(inplace=True)
+    return df
+
+
+def fetch_reqstore_entries(rs_client, model, subsample_size):
     # Get subsample to work with
     model_id = model.id
     rs_entries = []
     for r in rs_client.subsampling(str(model_id), amount=subsample_size):
         rs_entries.extend(r.entries)
 
-    requests = [model.contract.decode_request(e.request)['input'] for e in rs_entries]
-    data = np.vstack(requests)
-    df = pd.DataFrame(data)
-    df.drop_duplicates(inplace=True)
-    return df
+    valid_rs_entries = list(filter(lambda x: x.binary != b"", rs_entries))
+    return valid_rs_entries
 
 
 class AlwaysTrueObj(object):
@@ -60,7 +83,6 @@ AnyDimSize = AlwaysTrueObj()
 
 def contract_is_supported_by_rise(contract):
     # TODO check for tensor profiling type
-    # FIXME Add check for dtypes. Supported - int's, float's
 
     if 'probabilities' not in contract.output_names:
         return False
@@ -79,11 +101,38 @@ def contract_is_supported_by_rise(contract):
         if input_tensor_shape not in rise_supported_input_shapes:
             return False
 
+        # Accept only floats, integers, unsigned integers
+        # https://docs.scipy.org/doc/numpy/reference/generated/numpy.dtype.kind.html#numpy.dtype.kind
+        input_tensor_dtype = contract.input_dtypes[input_tensor_name]
+        if input_tensor_dtype.kind not in ('i', 'f', 'u'):
+            return False
+
     return True
 
 
+class TabularContractType(Enum):
+    INVALID = -1
+    SCALAR = 0
+    COLUMNAR = 1
+    SINGLE_TENSOR = 2
+
+
+def get_tabular_contract_type(contract: HSContract) -> TabularContractType:
+    tensor_shapes = list(contract.input_shapes.values())
+
+    if len(tensor_shapes) == 1 and 0 < len(tensor_shapes[0]) < 3:
+        return TabularContractType.SINGLE_TENSOR
+    elif all([shape == tuple() for shape in tensor_shapes]):
+        return TabularContractType.SCALAR
+    elif all([shape == (-1, AnyDimSize) for shape in tensor_shapes]):
+        return TabularContractType.COLUMNAR
+    else:
+        return TabularContractType.INVALID
+
+
 def contract_is_supported_by_anchor(contract):
-    # FIXME Add check for dtypes. Supported - int's, float's
+    # TODO check for tensor profiling type (?)
+
     if 'classes' not in contract.output_names:
         return False
 
@@ -95,15 +144,16 @@ def contract_is_supported_by_anchor(contract):
         if single_tensor_input_shape not in [(-1, AnyDimSize)]:
             return False
     else:
-        tensor_shapes = list(contract.input_shapes.values())
-        # all shapes are either scalar or (-1, 1) or (-1,)
-        is_columnar_w_batch = all([shape == (-1, AnyDimSize) for shape in tensor_shapes])
-        is_scalar = all([shape == tuple() for shape in tensor_shapes])
+        tabular_contract_type = get_tabular_contract_type(contract)
 
-        is_columnar_wo_batch = all([shape == (-1,) for shape in tensor_shapes])
-
-        if not any([is_columnar_w_batch, is_columnar_wo_batch, is_scalar]):
+        if tabular_contract_type == TabularContractType.INVALID:
             return False
+
+    # https://docs.scipy.org/doc/numpy/reference/generated/numpy.dtype.kind.html#numpy.dtype.kind
+    tensor_dtypes = list(contract.input_dtypes.values())
+    if any([dt.kind not in ("i", "u", "f") for dt in tensor_dtypes]):
+        return False
+
     return True
 
 

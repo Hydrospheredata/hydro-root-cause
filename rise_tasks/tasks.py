@@ -1,4 +1,5 @@
 import datetime
+from typing import Callable
 
 import numpy as np
 from bson import objectid
@@ -9,7 +10,24 @@ from pymongo.database import Database
 import utils
 from app import celery, rs_client, hs_client, get_mongo_client
 from client import HydroServingServable
+from contract import HSContract
 from rise.rise import RiseImageExplainer
+
+
+def get_rise_classifier_fn(servable: HydroServingServable) -> Callable:
+    contract: HSContract = servable.contract
+    # Remember that rise supports single tensor contracts only
+    input_dtype = list(contract.input_dtypes.values())[0]
+
+    def classifier_fn(x: np.array):
+        if x.dtype != input_dtype:
+            x = x.astype(input_dtype)  # Cast data to correct type
+
+        return servable(x)['probabilities']
+
+    # TODO check for batch_dim shape
+
+    return classifier_fn
 
 
 @celery.task(bind=True)
@@ -18,8 +36,8 @@ def rise_task(self, explanation_id: str):
     db: Database = mongo_client['root_cause']
 
     explanation_id = objectid.ObjectId(explanation_id)
-    job_json = db.rise_explanations.find_one_and_update({"_id": explanation_id},
-                                                        {"$set": {"started_at": datetime.datetime.now()}})
+    job_json = db.rise.find_one_and_update({"_id": explanation_id},
+                                           {"$set": {"started_at": datetime.datetime.now()}})
 
     if 'result' in job_json:
         return str(explanation_id)
@@ -38,7 +56,7 @@ def rise_task(self, explanation_id: str):
     if 'probabilities' not in model.contract.output_names:
         raise ValueError("Model have to return probabilities tensor")
 
-    input_tensors = utils.get_reqstore_request_tensors(model.contract, rs_client, folder, ts, reqstore_uid)
+    input_tensors = utils.get_reqstore_request(model.contract, rs_client, folder, ts, reqstore_uid)
 
     if len(input_tensors) != 1:
         raise ValueError("Request has to many input tensors")
@@ -51,7 +69,6 @@ def rise_task(self, explanation_id: str):
     # Create temporary servable
     temp_servable_copy: HydroServingServable = hs_client.deploy_servable(model_name, model_version)
 
-    # FIXME extract explained_image_probas from reqstore response
     explained_image_probas = temp_servable_copy(image)['probabilities'][0]  # Reduce batch dim
     top_10_classes = explained_image_probas.argsort()[::-1][:10]
     top_10_probas = explained_image_probas[top_10_classes]
@@ -77,17 +94,16 @@ def rise_task(self, explanation_id: str):
         raise ValueError(f"Unable to explain image models with shape {input_shape}")
 
     rise_config = {"input_size": input_shape,
-                   "number_of_masks": 1500,
-                   "mask_granularity": 15,
-                   "mask_density": 0.4,
+                   "number_of_masks": 1000,
+                   "mask_granularity": 8,
+                   "mask_density": 0.5,
                    "single_channel": is_single_channel}
 
     logger.info(f"Rise config is: {str(rise_config)}")
 
     rise_explainer = RiseImageExplainer()
 
-    # FIXME add classifier_fn support for contracts without batch dim
-    classifier_fn = lambda x: temp_servable_copy(x)['probabilities']
+    classifier_fn = get_rise_classifier_fn(temp_servable_copy)
 
     rise_explainer.fit(prediction_fn=classifier_fn,
                        input_size=rise_config['input_size'],
@@ -101,23 +117,22 @@ def rise_task(self, explanation_id: str):
 
     saliency_maps: np.array = rise_explainer.explain(image, state_updater=state_updater)
 
-    # normalize saliency map to (0;1)
-    _min = np.min(saliency_maps)
-    _max = np.max(saliency_maps)
-    saliency_maps = (saliency_maps - _min) / (_max - _min)
+    def normalize(x):
+        _min = np.min(x)
+        _max = np.max(x)
+        x = (x - _min) / (_max - _min)
+        return x
 
-    np.rint(saliency_maps * 255, out=saliency_maps)  # Round to int pixel values
-    saliency_maps = saliency_maps.astype(np.uint8)  # Use corresponding dtype
-    saliency_maps = saliency_maps.reshape((-1, saliency_maps.shape[1] * saliency_maps.shape[2]))  # Flatten masks
+    saliency_maps = saliency_maps.reshape((-1, saliency_maps.shape[1] * saliency_maps.shape[2]))  # Flatten masks to return to UI
 
     top_10_saliency_maps = saliency_maps[top_10_classes]
 
-    result = [{"mask": m, "class": c, "probability": p} for m, c, p in
-              zip(top_10_saliency_maps.tolist(), top_10_classes.tolist(), top_10_probas.tolist())]
+    result = [{"mask": np.uint8(normalize(m) * 255).tolist(), "class": c, "probability": p} for m, c, p in
+              zip(top_10_saliency_maps, top_10_classes.tolist(), top_10_probas.tolist())]
 
     # Store explanation in MongoDB
-    db.rise_explanations.update_one({"_id": explanation_id}, {"$set": {'result': result,
-                                                                       "completed_at": datetime.datetime.now()}})
+    db.rise.update_one({"_id": explanation_id}, {"$set": {'result': result,
+                                                          "completed_at": datetime.datetime.now()}})
 
     logger.info(f"Finished task to explain {model_name}_{model_version} with rise")
 

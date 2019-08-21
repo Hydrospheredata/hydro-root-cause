@@ -1,18 +1,23 @@
+import os
+import sys
 import unittest
+
+SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+sys.path.append(f"{SCRIPT_DIR}/..")
 
 from contract import HSContract
 from utils import get_supported_endpoints
 
-with open("../hs_demos/adult/serving.yaml") as f:
+with open(f"{SCRIPT_DIR}/../hs_demos/adult_columnar/serving.yaml") as f:
     columnar_contract = HSContract.load(f)
 
-with open("../hs_demos/adult_tensor/serving.yaml") as f:
+with open(f"{SCRIPT_DIR}/../hs_demos/adult_tensor/serving.yaml") as f:
     tensor_contract = HSContract.load(f)
 
-with open("../hs_demos/adult_scalar/serving.yaml") as f:
+with open(f"{SCRIPT_DIR}/../hs_demos/adult_scalar/serving.yaml") as f:
     scalar_contract = HSContract.load(f)
 
-with open("../hs_demos/mobilenet/serving.yaml") as f:
+with open(f"{SCRIPT_DIR}/../hs_demos/mobilenet_v2_035/serving.yaml") as f:
     image_contract = HSContract.load(f)
 
 
