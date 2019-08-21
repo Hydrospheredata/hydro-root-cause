@@ -37,7 +37,7 @@ for model_name in ['adult_columnar', 'adult_scalar', 'adult_tensor']:
     print("Deploy adult servable and send single sample batches")
     adult_servable = hs_client.deploy_servable(model_name, 1)
     sleep(5)  # Bug - servable is not detected fast enough
-    for _ in tqdm(range(10)):
+    for _ in tqdm(range(100)):
         i = np.random.randint(0, df.shape[0])
 
         if model_name.endswith("tensor"):

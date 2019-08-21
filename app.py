@@ -56,6 +56,7 @@ celery = Celery(app.name,
                 backend=app.config['CELERY_RESULT_BACKEND'])
 celery.autodiscover_tasks(["rise_tasks", "anchor_tasks"], force=True)
 celery.conf.update(app.config)
+celery.conf.update({"CELERY_DISABLE_RATE_LIMITS": True})
 
 import anchor_tasks
 import rise_tasks
@@ -142,14 +143,7 @@ def get_task_status(task_id, method):
 
 @app.route('/fetch_result/<method>/<result_id>', methods=["GET"])
 def fetch_result(result_id, method):
-    if method == "rise":
-        collection = db.rise_explanations
-    elif method == "anchor":
-        collection = db.anchor_explanations
-    else:
-        raise ValueError
-
-    explanation = collection.find_one({"_id": objectid.ObjectId(result_id)})
+    explanation = db[method].find_one({"_id": objectid.ObjectId(result_id)})
     del explanation['_id']
 
     return jsonify(explanation)

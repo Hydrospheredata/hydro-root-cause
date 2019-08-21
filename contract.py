@@ -72,7 +72,7 @@ class HSContract:
         for t in proto_contract_dict['inputs']:
             name = t['name']
             shape = tuple([int(s['size']) for s in t['shape'].get('dim', [])])
-            dtype = HS_TO_NP_DTYPE[STR_TO_HS_DTYPE[t['dtype']]]
+            dtype = (HS_TO_NP_DTYPE[STR_TO_HS_DTYPE[t['dtype']]])
             input_tensors.append({"name": name,
                                   "shape": shape,
                                   "dtype": dtype})
@@ -82,7 +82,7 @@ class HSContract:
         for t in proto_contract_dict['outputs']:
             name = t['name']
             shape = tuple([int(s['size']) for s in t['shape'].get('dim', [])])
-            dtype = HS_TO_NP_DTYPE[STR_TO_HS_DTYPE[t['dtype']]]
+            dtype = (HS_TO_NP_DTYPE[STR_TO_HS_DTYPE[t['dtype']]])
             output_tensors.append({"name": name,
                                    "shape": shape,
                                    "dtype": dtype})
@@ -141,7 +141,7 @@ class HSContract:
                 shape = tuple(t_dict['shape'])
 
             return {"name": t_name,
-                    "dtype": HS_TO_NP_DTYPE[NAME_TO_DTYPES[t_dict['type']]],
+                    "dtype": (HS_TO_NP_DTYPE[NAME_TO_DTYPES[t_dict['type']]]),
                     "shape": shape}
 
         contract_dict = {}
@@ -270,7 +270,7 @@ class HSContract:
         """
         input_dict = {}
         for k, v in MessageToDict(proto, preserving_proto_field_name=True)['inputs'].items():
-            dtype = HS_TO_NP_DTYPE[STR_TO_HS_DTYPE[v['dtype']]]
+            dtype = (HS_TO_NP_DTYPE[STR_TO_HS_DTYPE[v['dtype']]])
             value = proto.inputs[k].__getattribute__(NP_DTYPE_TO_ARG_NAME[dtype])
             if v['tensor_shape']:
                 shape = [int(s['size']) for s in v['tensor_shape']['dim']]
@@ -289,7 +289,7 @@ class HSContract:
         """
         output_dict = {}
         for k, v in MessageToDict(proto, preserving_proto_field_name=True)['outputs'].items():
-            dtype = HS_TO_NP_DTYPE[STR_TO_HS_DTYPE[v['dtype']]]
+            dtype = (HS_TO_NP_DTYPE[STR_TO_HS_DTYPE[v['dtype']]])
             value = proto.outputs[k].__getattribute__(NP_DTYPE_TO_ARG_NAME[dtype])
             if v['tensor_shape']:
                 shape = [int(s['size']) for s in v['tensor_shape']['dim']]

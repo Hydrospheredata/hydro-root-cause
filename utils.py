@@ -151,7 +151,7 @@ def contract_is_supported_by_anchor(contract):
 
     # https://docs.scipy.org/doc/numpy/reference/generated/numpy.dtype.kind.html#numpy.dtype.kind
     tensor_dtypes = list(contract.input_dtypes.values())
-    if not all([dt not in ("i", "u", "f") for dt in tensor_dtypes]):
+    if any([dt.kind not in ("i", "u", "f") for dt in tensor_dtypes]):
         return False
 
     return True
