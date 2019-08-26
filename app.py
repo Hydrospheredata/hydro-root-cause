@@ -62,22 +62,24 @@ import anchor_tasks
 import rise_tasks
 
 
-@app.route("/")
+@app.route("/", methods=['GET'])
 def hello():
     return "Hi! I am RootCause Service"
 
 
-@app.route("/status")
+@app.route("/status", methods=['GET'])
 def get_instance_status():
-    req_json = request.get_json()
-    if not validator.is_valid(req_json):
-        error_message = "\n".join(validator.iter_errors(req_json))
-        return jsonify({"message": error_message}), 400
+    possible_args = {"model_name", "model_version", "uid", "ts"}
+    if request.args.keys() != possible_args:
+        return jsonify({"message": f"Expected args: {possible_args}. Provided args: {request.args.keys()}"}), 400
 
-    model_name = req_json['model']['name']
-    model_version = req_json['model']['version']
-    uid = req_json['explained_instance']['uid']
-    timestamp = req_json['explained_instance']['timestamp']
+    try:
+        model_name = request.args.get('model_name')
+        model_version = request.args.get('model_version')
+        uid = request.args.get('uid')
+        timestamp = request.args.get('ts')
+    except Exception as e:
+        return jsonify(e), 400
 
     model = hs_client.get_model(model_name, model_version)
 
