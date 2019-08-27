@@ -70,8 +70,8 @@ def hello():
 @app.route("/status", methods=['GET'])
 def get_instance_status():
     possible_args = {"model_name", "model_version", "uid", "ts"}
-    if request.args.keys() != possible_args:
-        return jsonify({"message": f"Expected args: {possible_args}. Provided args: {request.args.keys()}"}), 400
+    if set(request.args.keys()) != possible_args:
+        return jsonify({"message": f"Expected args: {possible_args}. Provided args: {set(request.args.keys())}"}), 400
 
     try:
         model_name = request.args.get('model_name')
