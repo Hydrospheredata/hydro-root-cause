@@ -20,6 +20,9 @@ with open(f"{SCRIPT_DIR}/../hs_demos/adult_scalar/serving.yaml") as f:
 with open(f"{SCRIPT_DIR}/../hs_demos/mobilenet_v2_035/serving.yaml") as f:
     image_contract = HSContract.load(f)
 
+with open(f"{SCRIPT_DIR}/../hs_demos/mnist/serving.yaml") as f:
+    mnist_contract = HSContract.load(f)
+
 
 class TestSupportedEndpoints(unittest.TestCase):
 
@@ -37,6 +40,10 @@ class TestSupportedEndpoints(unittest.TestCase):
 
     def test_image_w_batch_size(self):
         supported_endpoints = get_supported_endpoints(image_contract)
+        self.assertEqual(supported_endpoints, ['rise'])
+
+    def test_mnist_contract(self):
+        supported_endpoints = get_supported_endpoints(mnist_contract)
         self.assertEqual(supported_endpoints, ['rise'])
 
 
