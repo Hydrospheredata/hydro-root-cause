@@ -75,9 +75,9 @@ def get_instance_status():
 
     try:
         model_name = request.args.get('model_name')
-        model_version = request.args.get('model_version')
-        uid = request.args.get('uid')
-        timestamp = request.args.get('ts')
+        model_version = int(request.args.get('model_version'))
+        uid = int(request.args.get('uid'))
+        timestamp = int(request.args.get('ts'))
     except Exception as e:
         return jsonify(e), 400
 
