@@ -114,7 +114,7 @@ def get_supported_methods():
 
 
 @app.route('/task_status/<method>/<task_id>', methods=["GET"])
-def get_task_status(task_id, method):
+def get_task_status(method, task_id):
     if method == "rise":
         task = rise_tasks.tasks.rise_task.AsyncResult(task_id)
     elif method == "anchor":
@@ -124,6 +124,7 @@ def get_task_status(task_id, method):
 
     response = {
         'state': task.state,
+        'task_id': task_id
     }
 
     if task.state == 'PENDING':
