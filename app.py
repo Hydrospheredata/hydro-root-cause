@@ -112,13 +112,14 @@ def get_supported_methods():
 
 
 @app.route('/task_status/<method>/<task_id>', methods=["GET"])
-def get_task_status(task_id, method):
+def get_task_status(method, task_id):
+    avaiable_methods = ['rise', 'anchor']
     if method == "rise":
         task = rise_tasks.tasks.rise_task.AsyncResult(task_id)
     elif method == "anchor":
         task = anchor_tasks.tasks.anchor_task.AsyncResult(task_id)
     else:
-        raise ValueError
+        raise ValueError("Invalid method - expected [{}], got".format(avaiable_methods, method))
 
     response = {
         'state': task.state,
