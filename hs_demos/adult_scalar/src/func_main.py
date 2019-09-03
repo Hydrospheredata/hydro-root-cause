@@ -4,9 +4,18 @@ from joblib import load
 
 clf = load('/model/files/random-forest-adult.joblib')
 
-features = ['Age', 'Workclass', 'Education', 'Marital Status', 'Occupation',
-            'Relationship', 'Race', 'Sex', 'Capital Gain', 'Capital Loss',
-            'Hours per week', 'Country']
+features = ['age',
+            'workclass',
+            'education',
+            'marital_status',
+            'occupation',
+            'relationship',
+            'race',
+            'sex',
+            'capital_gain',
+            'capital_loss',
+            'hours_per_week',
+            'country']
 
 
 def extract_value(proto):

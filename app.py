@@ -65,12 +65,12 @@ import anchor_tasks
 import rise_tasks
 
 
-@app.route("/")
+@app.route("/", methods=['GET'])
 def hello():
     return "Hi! I am RootCause Service"
 
 
-@app.route("/status")
+@app.route("/status", methods=['GET'])
 def get_instance_status():
     possible_args = {"model_name", "model_version", "uid", "ts"}
     if set(request.args.keys()) != possible_args:
@@ -88,6 +88,7 @@ def get_instance_status():
         model = hs_client.get_model(model_name, model_version)
     except ValueError as e:
         return jsonify({"message": f"Unable to found {model_name}v{model_version}"}), 404
+
 
     supported_endpoints = utils.get_supported_endpoints(model.contract)
     logger.debug(f"Supported endpoints {supported_endpoints}")
@@ -134,6 +135,7 @@ def get_task_status(method, task_id):
 
     response = {
         'state': task.state,
+        'task_id': task_id
     }
 
     if task.state == 'PENDING':

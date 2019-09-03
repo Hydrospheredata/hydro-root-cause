@@ -89,6 +89,7 @@ def contract_is_supported_by_rise(contract):
 
     rise_supported_input_shapes = [(-1, AnyDimSize, AnyDimSize, 3),
                                    (-1, AnyDimSize, AnyDimSize, 1),
+                                   (-1, AnyDimSize, AnyDimSize),
                                    (AnyDimSize, AnyDimSize, 3),
                                    (AnyDimSize, AnyDimSize, 1),
                                    (AnyDimSize, AnyDimSize)]
