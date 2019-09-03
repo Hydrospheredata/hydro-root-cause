@@ -6,46 +6,60 @@ payload:
   - "random-forest-adult.joblib"
 runtime: "hydrosphere/serving-runtime-python-3.6:0.1.2-rc0"
 install-command: "pip install -r requirements.txt"
+training-data: s3://serving-demo-files/adultsalary.csv
 contract:
   name: "predict"
   inputs:
     age:
       shape: scalar
       type: int64
-    wc:
+      profile: numerical
+    workclass:
       shape: scalar
       type: int64
-    edu:
+      profile: numerical
+    education:
       shape: scalar
       type: int64
-    marriage:
+      profile: numerical
+    marital_status:
       shape: scalar
       type: int64
+      profile: numerical
     occupation:
       shape: scalar
       type: int64
+      profile: numerical
     relationship:
       shape: scalar
       type: int64
+      profile: numerical
     race:
       shape: scalar
       type: int64
+      profile: numerical
     sex:
       shape: scalar
       type: int64
-    cg:
+      profile: numerical
+    capital_gain:
       shape: scalar
       type: int64
-    cl:
+      profile: numerical
+    capital_loss:
       shape: scalar
       type: int64
-    hpw:
+      profile: numerical
+    hours_per_week:
       shape: scalar
       type: int64
+      profile: numerical
     country:
       shape: scalar
       type: int64
+      profile: numerical
   outputs:
     prediction:
       shape: scalar
       type: int64
+      profile: numerical
