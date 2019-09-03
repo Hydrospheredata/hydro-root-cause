@@ -21,7 +21,7 @@ hs_client = HydroServingClient("localhost:9090")
 print("RootCause Hello: ", requests.get("http://localhost/rootcause/").text)
 
 # Iterate over 3 possible contract types to check!
-for model_name in ['adult_columnar', 'adult_scalar', 'adult_tensor']:
+for model_name in ['adult_scalar', 'adult_columnar', 'adult_tensor']:
     print(f"{'-' * 40} TESTING MODEL {model_name} {'-' * 40}")
     try:
         adult_model = hs_client.get_model(model_name, 1)
