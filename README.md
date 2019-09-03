@@ -1,5 +1,21 @@
 # Root Cause Service
 
-Models used in service demos are stored in `hs_demos`.
+Hydro serving models used in demos are stored in [hs_demos](hs_demos).
 
-Test anchor and rise with `python anchor_adult_demo.py` and `rise_mobilenet_demo.py` respectively  
+You can test anchor and rise with `python tests/test_anchor_on_multiple_adult_models.py` and `test/test_rise_on_mobilenet.py` correspondingly.  
+
+## Dependencies
+
+```python
+REQSTORE_URL = os.getenv("REQSTORE_URL", "managerui:9090")
+SERVING_URL = os.getenv("SERVING_URL", "managerui:9090")
+
+MONGO_URL = os.getenv("MONGO_URL", "mongodb")
+MONGO_PORT = int(os.getenv("MONGO_PORT", 27017))
+MONGO_AUTH_DB = os.getenv("MONGO_AUTH_DB", "admin")
+MONGO_USER = os.getenv("MONGO_USER")
+MONGO_PASS = os.getenv("MONGO_PASS")
+```
+
+`SERVING_URL` is pointing to GRPC service with `ManagerServiceStub`,
+`PredictionServiceStub`, `GatewayServiceStub`.

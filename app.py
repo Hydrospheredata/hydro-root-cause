@@ -10,6 +10,7 @@ from hydro_serving_grpc.reqstore import reqstore_client
 from jsonschema import Draft7Validator
 from loguru import logger
 from pymongo import MongoClient
+from waitress import serve
 
 import utils
 from client import HydroServingClient
@@ -69,34 +70,42 @@ def hello():
 
 @app.route("/status")
 def get_instance_status():
-    req_json = request.get_json()
-    if not validator.is_valid(req_json):
-        error_message = "\n".join(validator.iter_errors(req_json))
-        return jsonify({"message": error_message}), 400
+    possible_args = {"model_name", "model_version", "uid", "ts"}
+    if set(request.args.keys()) != possible_args:
+        return jsonify({"message": f"Expected args: {possible_args}. Provided args: {set(request.args.keys())}"}), 400
 
-    model_name = req_json['model']['name']
-    model_version = req_json['model']['version']
-    uid = req_json['explained_instance']['uid']
-    timestamp = req_json['explained_instance']['timestamp']
+    try:
+        model_name = request.args.get('model_name')
+        model_version = int(request.args.get('model_version'))
+        uid = int(request.args.get('uid'))
+        timestamp = int(request.args.get('ts'))
+    except Exception as e:
+        return jsonify({"message": f"Was unable to cast one of {('model_version', 'uid', 'ts')} to int"}), 400
 
-    model = hs_client.get_model(model_name, model_version)
+    try:
+        model = hs_client.get_model(model_name, model_version)
+    except ValueError as e:
+        return jsonify({"message": f"Unable to found {model_name}v{model_version}"}), 404
 
     supported_endpoints = utils.get_supported_endpoints(model.contract)
     logger.debug(f"Supported endpoints {supported_endpoints}")
 
-    rootcause_methods_statuses = []
-    for method in supported_endpoints:
-        response = {"method": method}
-        instance_doc = db[method].find_one({"explained_instance.uid": {"$eq": uid},
-                                            "explained_instance.timestamp": {"$eq": timestamp},
-                                            "model.name": {"$eq": model_name},
-                                            "model.version": {"$eq": model_version}})
-        if instance_doc is None:
-            response['status'] = {"state": "NOT_QUEUED"}
-        else:
-            task_id = instance_doc['celery_task_id']
-            response['status'] = get_task_status(task_id, method).get_json()
-        rootcause_methods_statuses.append(response)
+    try:
+        rootcause_methods_statuses = []
+        for method in supported_endpoints:
+            response = {"method": method}
+            instance_doc = db[method].find_one({"explained_instance.uid": {"$eq": uid},
+                                                "explained_instance.timestamp": {"$eq": timestamp},
+                                                "model.name": {"$eq": model_name},
+                                                "model.version": {"$eq": model_version}})
+            if instance_doc is None:
+                response['status'] = {"state": "NOT_QUEUED"}
+            else:
+                task_id = instance_doc['celery_task_id']
+                response['status'] = get_task_status(task_id, method).get_json()
+            rootcause_methods_statuses.append(response)
+    except Exception as e:
+        return jsonify({"message": f"{str(e)}"}), 500
 
     return jsonify(rootcause_methods_statuses)
 
@@ -193,4 +202,4 @@ def rise():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, host='0.0.0.0')
+    serve(app, host='0.0.0.0', port=5000)

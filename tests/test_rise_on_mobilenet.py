@@ -15,7 +15,7 @@ import numpy as np
 import requests
 from imgcat import imgcat
 from client import HydroServingClient
-from keras.applications.mobilenetv2 import decode_predictions
+from keras.applications.mobilenet_v2 import decode_predictions
 import matplotlib.pyplot as plt
 from keras.preprocessing import image
 
@@ -30,6 +30,7 @@ hs_client = HydroServingClient("localhost:9090")
 try:
     mobile_net_035 = hs_client.get_model(MODEL_NAME, 1)
 except Exception as e:
+    print(e)
     print("Uploading model....")
     os.system(f"hs cluster use local >/dev/null 2>&1")
     os.system(f"hs upload --dir {SCRIPT_DIR}/../hs_demos/mobilenet_v2 >/dev/null 2>&1")
