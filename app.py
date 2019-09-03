@@ -15,7 +15,7 @@ from waitress import serve
 import utils
 from client import HydroServingClient
 
-DEBUG_ENV = bool(os.getenv("DEBUG_ENV", False))
+DEBUG_ENV = bool(os.getenv("DEBUG_ENV", True))
 
 REQSTORE_URL = os.getenv("REQSTORE_URL", "managerui:9090")
 SERVING_URL = os.getenv("SERVING_URL", "managerui:9090")
@@ -104,7 +104,7 @@ def get_instance_status():
                 response['status'] = {"state": "NOT_QUEUED"}
             else:
                 task_id = instance_doc['celery_task_id']
-                response['status'] = get_task_status(task_id, method).get_json()
+                response['status'] = get_task_status(method=method, task_id=task_id).get_json()
             rootcause_methods_statuses.append(response)
     except Exception as e:
         return jsonify({"message": f"{str(e)}"}), 500
