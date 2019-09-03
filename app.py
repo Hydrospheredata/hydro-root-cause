@@ -15,6 +15,8 @@ from waitress import serve
 import utils
 from client import HydroServingClient
 
+DEBUG_ENV = bool(os.getenv("DEBUG_ENV", False))
+
 REQSTORE_URL = os.getenv("REQSTORE_URL", "managerui:9090")
 SERVING_URL = os.getenv("SERVING_URL", "managerui:9090")
 
@@ -202,4 +204,7 @@ def rise():
 
 
 if __name__ == "__main__":
-    serve(app, host='0.0.0.0', port=5000)
+    if not DEBUG_ENV:
+        serve(app, host='0.0.0.0', port=5000)
+    else:
+        app.run(debug=True, host='0.0.0.0', port=5000)

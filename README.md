@@ -7,6 +7,8 @@ You can test anchor and rise with `python tests/test_anchor_on_multiple_adult_mo
 ## Dependencies
 
 ```python
+DEBUG_ENV = bool(os.getenv("DEBUG_ENV", True))
+
 REQSTORE_URL = os.getenv("REQSTORE_URL", "managerui:9090")
 SERVING_URL = os.getenv("SERVING_URL", "managerui:9090")
 
