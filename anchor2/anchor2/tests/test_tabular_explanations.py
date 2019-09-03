@@ -108,4 +108,3 @@ class TestTabularExplanations(unittest.TestCase):
             exp.predicates = [p1, p2]
             exp.simplify_predicates()
             self.assertEqual(len(exp.predicates), 2)
-

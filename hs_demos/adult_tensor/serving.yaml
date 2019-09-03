@@ -1,5 +1,5 @@
 kind: Model
-name: "adult-tensor"
+name: "adult_tensor"
 payload:
   - "src/"
   - "requirements.txt"
@@ -13,6 +13,6 @@ contract:
       shape: [-1, 12]
       type: int64
   outputs:
-    prediction:
+    classes:
       shape: [-1, 1]
       type: int64

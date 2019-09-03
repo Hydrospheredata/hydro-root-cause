@@ -1,5 +1,5 @@
 kind: Model
-name: "adult-scalar"
+name: "adult_scalar"
 payload:
   - "src/"
   - "requirements.txt"
@@ -59,7 +59,7 @@ contract:
       type: int64
       profile: numerical
   outputs:
-    prediction:
+    classes:
       shape: scalar
       type: int64
       profile: numerical

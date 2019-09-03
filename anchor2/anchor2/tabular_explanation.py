@@ -1,7 +1,9 @@
-from typing import Generator, List, Dict, Any
-from abc import ABC, abstractmethod
-from .explanation import Explanation, Predicate
+from abc import abstractmethod
+from typing import Generator, List
+
 import numpy as np
+
+from .explanation import Explanation, Predicate
 
 
 class TabularExplanation(Explanation):

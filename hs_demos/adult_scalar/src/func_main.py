@@ -1,6 +1,6 @@
 import hydro_serving_grpc as hs
-from joblib import load
 import numpy as np
+from joblib import load
 
 clf = load('/model/files/random-forest-adult.joblib')
 
@@ -32,4 +32,4 @@ def predict(**kwargs):
         dtype=hs.DT_INT64,
         tensor_shape=hs.TensorShapeProto())
 
-    return hs.PredictResponse(outputs={"prediction": response})
+    return hs.PredictResponse(outputs={"classes": response})

@@ -1,11 +1,14 @@
 import os
-import anchor
+
 import numpy as np
 import pandas as pd
 import sklearn.ensemble
 
+import anchor
+
 FILE_PATH = os.path.dirname(os.path.realpath(__file__))
 PRECISION_THRESHOLD = 0.95
+
 
 def map_array_values(series, value_map):
     if series.dtype == 'object':

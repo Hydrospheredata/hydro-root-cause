@@ -1,13 +1,14 @@
-from typing import List, Tuple
-import numpy as np
-
 from functools import partial
+from itertools import compress
+from typing import List, Tuple
+
+import numpy as np
+from loguru import logger
+
 from .explanation import Explanation
 from .multi_armed_bandit_solver import BernoulliArm, KullbackLeiblerLUCB
 from .tabular_explanation import TabularExplanation, EqualityPredicate, InequalityPredicate, GreaterOrEqualPredicate, \
     LessPredicate
-from itertools import compress
-from loguru import logger
 
 
 class AnchorSelectionStrategy:
@@ -84,7 +85,7 @@ def compute_metrics_on_original_data(anchor, d_data, labels, target_label) -> Tu
     :return: (precision, coverage)
     """
 
-    data_with_anchor_index = np.apply_along_axis(anchor.check_against_sample, axis=1, arr=d_data)  # TODO: Candidate for profiling
+    data_with_anchor_index = np.apply_along_axis(anchor.check_against_sample, axis=1, arr=d_data)  # Candidate for profiling
     data_with_anchor = d_data[data_with_anchor_index]
     labels_with_anchor = labels[data_with_anchor_index]
 
@@ -165,12 +166,12 @@ class BeamAnchorSearch(AnchorSelectionStrategy):
                          d_classifier_fn,
                          ordinal_idx: List[int],
                          feature_names: List[str],
-                         precision_threshold: float = 0.95,
-                         anchor_pool_size=25,
+                         precision_threshold: float = 0.90,
+                         anchor_pool_size=10,
                          beam_size=5,
                          batch_size=150,
-                         tolerance=0.3,
-                         delta=0.2,
+                         tolerance=0.35,
+                         delta=0.25,
                          **kwargs
                          ) -> Explanation:
         """
