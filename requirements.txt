@@ -11,7 +11,7 @@ grpcio-tools
 hydro-serving-grpc==2.1.0rc1
 python-dotenv
 pymongo==3.8.0
-celery[mongodb]==4.3.0
+celery[mongodb]==4.4.0rc3
 supervisor
 PyYAML
 flask_cors
