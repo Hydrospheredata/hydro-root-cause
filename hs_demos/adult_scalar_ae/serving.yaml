@@ -1,0 +1,54 @@
+kind: Model
+name: "adult_ae"
+payload:
+  - "src/"
+  - "requirements.txt"
+  - "adult_ae"
+runtime: "hydrosphere/serving-runtime-python-3.6:0.1.2-rc0"
+install-command: "pip install -r requirements.txt"
+contract:
+  name: "predict"
+  inputs:
+    age:
+      shape: scalar
+      type: int64
+    workclass:
+      shape: scalar
+      type: int64
+    education:
+      shape: scalar
+      type: int64
+    marital_status:
+      shape: scalar
+      type: int64
+    occupation:
+      shape: scalar
+      type: int64
+    relationship:
+      shape: scalar
+      type: int64
+    race:
+      shape: scalar
+      type: int64
+    sex:
+      shape: scalar
+      type: int64
+    capital_gain:
+      shape: scalar
+      type: int64
+    capital_loss:
+      shape: scalar
+      type: int64
+    hours_per_week:
+      shape: scalar
+      type: int64
+    country:
+      shape: scalar
+      type: int64
+    prediction:
+      shape: scalar
+      type: int64
+  outputs:
+    value:
+      shape: scalar
+      type: double
