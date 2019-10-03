@@ -32,4 +32,4 @@ def predict(**kwargs):
         dtype=hs.DT_INT64,
         tensor_shape=hs.TensorShapeProto())
 
-    return hs.PredictResponse(outputs={"classes": response})
+    return hs.PredictResponse(outputs={"prediction": response})
