@@ -6,7 +6,8 @@ payload:
   - "random-forest-adult.joblib"
 runtime: "hydrosphere/serving-runtime-python-3.6:0.1.2-rc0"
 install-command: "pip install -r requirements.txt"
-training-data: s3://serving-demo-files/adultsalary.csv
+#training-data: s3://serving-demo-files/adultsalary.csv
+training-data: ./adultsalary.csv
 contract:
   name: "predict"
   inputs:
