@@ -1,6 +1,7 @@
 import datetime
 import json
 import os
+from subprocess import check_output
 
 from bson import objectid
 from celery import Celery
@@ -16,6 +17,7 @@ import utils
 from client import HydroServingClient
 
 DEBUG_ENV = bool(os.getenv("DEBUG_ENV", True))
+VERSION = "$Id$"
 
 REQSTORE_URL = os.getenv("REQSTORE_URL", "managerui:9090")
 SERVING_URL = os.getenv("SERVING_URL", "managerui:9090")
@@ -70,6 +72,15 @@ def hello():
     return "Hi! I am RootCause Service"
 
 
+@app.route("/buildinfo", method=['GET'])
+def buildinfo():
+    branch_name = check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"]).decode("utf8").strip()
+    return jsonify({"version": VERSION,
+                    "name": "root-cause",
+                    "gitCurrentBranch": branch_name,
+                    "gitHeadCommit": VERSION})
+
+
 @app.route("/status", methods=['GET'])
 def get_instance_status():
     possible_args = {"model_name", "model_version", "uid", "ts"}
@@ -88,7 +99,6 @@ def get_instance_status():
         model = hs_client.get_model(model_name, model_version)
     except ValueError as e:
         return jsonify({"message": f"Unable to found {model_name}v{model_version}"}), 404
-
 
     supported_endpoints = utils.get_supported_endpoints(model.contract)
     logger.debug(f"Supported endpoints {supported_endpoints}")
