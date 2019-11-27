@@ -1,6 +1,7 @@
 import datetime
 import json
 import os
+import sys
 from subprocess import check_output
 
 from bson import objectid
@@ -75,8 +76,10 @@ def hello():
 @app.route("/buildinfo", method=['GET'])
 def buildinfo():
     branch_name = check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"]).decode("utf8").strip()
+    py_version = sys.version
     return jsonify({"version": VERSION,
                     "name": "root-cause",
+                    "pythonVersion": py_version,
                     "gitCurrentBranch": branch_name,
                     "gitHeadCommit": VERSION})
 
