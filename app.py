@@ -18,7 +18,10 @@ import utils
 from client import HydroServingClient
 
 DEBUG_ENV = bool(os.getenv("DEBUG_ENV", True))
-VERSION = "$Id$"
+
+with open("version") as version_file:
+    VERSION = version_file.read().strip()
+HEAD_COMMIT = "$Id$".strip("$").split("Id:")[1].strip()
 
 REQSTORE_URL = os.getenv("REQSTORE_URL", "managerui:9090")
 SERVING_URL = os.getenv("SERVING_URL", "managerui:9090")
@@ -81,7 +84,7 @@ def buildinfo():
                     "name": "root-cause",
                     "pythonVersion": py_version,
                     "gitCurrentBranch": branch_name,
-                    "gitHeadCommit": VERSION})
+                    "gitHeadCommit": HEAD_COMMIT})
 
 
 @app.route("/status", methods=['GET'])
