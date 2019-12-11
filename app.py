@@ -76,7 +76,7 @@ def hello():
     return "Hi! I am RootCause Service"
 
 
-@app.route("/buildinfo", method=['GET'])
+@app.route("/buildinfo", methods=['GET'])
 def buildinfo():
     branch_name = check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"]).decode("utf8").strip()
     py_version = sys.version
