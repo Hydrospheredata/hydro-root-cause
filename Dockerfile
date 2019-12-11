@@ -7,7 +7,8 @@ RUN apt-get update && \
                        python3-numpy \
                        python3-scipy \
                        libatlas-dev \
-                       libatlas3-base
+                       libatlas3-base \
+                       git
 
 RUN  update-alternatives --set libblas.so.3 \
     /usr/lib/atlas-base/atlas/libblas.so.3 && \
