@@ -19,9 +19,9 @@ from client import HydroServingClient
 
 DEBUG_ENV = bool(os.getenv("DEBUG_ENV", True))
 
-with open("version") as version_file:
-    VERSION = version_file.read().strip()
-HEAD_COMMIT = "$Id$".strip("$").split("Id:")[1].strip()
+with open("version.json") as version_file:
+    buildinfo = json.load(version_file)  # Load buildinfo with branchName, headCommitId and version label
+    buildinfo['pythonVersion'] = sys.version  # Augment with python runtime version
 
 REQSTORE_URL = os.getenv("REQSTORE_URL", "managerui:9090")
 SERVING_URL = os.getenv("SERVING_URL", "managerui:9090")
@@ -78,13 +78,7 @@ def hello():
 
 @app.route("/buildinfo", methods=['GET'])
 def buildinfo():
-    branch_name = check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"]).decode("utf8").strip()
-    py_version = sys.version
-    return jsonify({"version": VERSION,
-                    "name": "root-cause",
-                    "pythonVersion": py_version,
-                    "gitCurrentBranch": branch_name,
-                    "gitHeadCommit": HEAD_COMMIT})
+    return jsonify(buildinfo)
 
 
 @app.route("/status", methods=['GET'])
