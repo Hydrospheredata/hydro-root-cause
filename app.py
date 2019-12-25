@@ -20,8 +20,8 @@ from client import HydroServingClient
 DEBUG_ENV = bool(os.getenv("DEBUG_ENV", True))
 
 with open("version.json") as version_file:
-    buildinfo = json.load(version_file)  # Load buildinfo with branchName, headCommitId and version label
-    buildinfo['pythonVersion'] = sys.version  # Augment with python runtime version
+    BUILDINFO = json.load(version_file)  # Load buildinfo with branchName, headCommitId and version label
+    BUILDINFO['pythonVersion'] = sys.version  # Augment with python runtime version
 
 REQSTORE_URL = os.getenv("REQSTORE_URL", "managerui:9090")
 SERVING_URL = os.getenv("SERVING_URL", "managerui:9090")
@@ -78,7 +78,7 @@ def hello():
 
 @app.route("/buildinfo", methods=['GET'])
 def buildinfo():
-    return jsonify(buildinfo)
+    return jsonify(BUILDINFO)
 
 
 @app.route("/status", methods=['GET'])
