@@ -8,7 +8,7 @@ nose==1.3.7
 requests
 scikit-image
 grpcio-tools
-hydro-serving-grpc==2.1.0rc1
+hydro-serving-grpc==2.1.0
 python-dotenv
 pymongo==3.8.0
 celery[mongodb]==4.4.0rc3
@@ -17,3 +17,4 @@ PyYAML
 flask_cors
 jsonschema==3.0.2
 waitress==1.3.1
+hydrosdk==2.0.0

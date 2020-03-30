@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "required": [
+    "model_version_id",
+    "explained_request_id",
+    "method"
+  ],
+  "properties": {
+    "explained_request_id": {
+      "type": "string"
+    },
+    "model_version_id": {
+      "type": "integer"
+    },
+    "method": {
+      "type": "string",
+      "enum": [
+        "anchor",
+        "rise"
+      ]
+    }
+  }
+}

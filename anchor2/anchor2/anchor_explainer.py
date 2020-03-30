@@ -39,6 +39,7 @@ class TabularExplainer(AnchorExplainer):
         :param oh_encoded_categories: Dictionary of "Feature model_name" -> List of feature indices in data used for encoding this "feature model_name"
         """
         assert len(data.shape) == 2, "Data should be a matrix"
+
         # Store feature names to generate human-readable explanations
         if feature_names is not None:
             assert len(feature_names) == data.shape[1], "Length of feature names list must match number of columns"

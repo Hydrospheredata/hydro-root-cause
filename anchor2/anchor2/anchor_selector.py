@@ -5,7 +5,6 @@ from typing import List, Tuple
 import numpy as np
 from loguru import logger
 
-from .explanation import Explanation
 from .multi_armed_bandit_solver import BernoulliArm, KullbackLeiblerLUCB
 from .tabular_explanation import TabularExplanation, EqualityPredicate, InequalityPredicate, GreaterOrEqualPredicate, \
     LessPredicate
@@ -26,7 +25,7 @@ class AnchorSelectionStrategy:
                          batch_size=10,
                          tolerance=0.05,
                          delta=0.1
-                         ) -> Explanation:
+                         ) -> TabularExplanation:
         pass
 
 
@@ -173,7 +172,7 @@ class BeamAnchorSearch(AnchorSelectionStrategy):
                          tolerance=0.35,
                          delta=0.25,
                          **kwargs
-                         ) -> Explanation:
+                         ) -> TabularExplanation:
         """
         This function returns the first anchor which precision will be >= precision_threshold. Anchor selection process is an iterative
          process - first, the pool of anchors is created, then best anchors anchors from this pool take over the whole pool by copying
