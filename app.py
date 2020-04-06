@@ -92,6 +92,7 @@ class ExplanationState(Enum):
     STARTED = auto()
     SUCCESS = auto()
     FAILED = auto()
+    NOT_SUPPORTED = auto()
 
 
 @app.route("/", methods=['GET'])
@@ -196,6 +197,8 @@ def get_task_status():
 
 @app.route('/explanation', methods=["GET"])
 def fetch_result():
+    # TODO check for supported model!
+
     possible_args = {"model_version_id", "explained_request_id", "method"}
     if set(request.args.keys()) != possible_args:
         return jsonify({"message": f"Expected args: {possible_args}. Provided args: {set(request.args.keys())}"}), 400
@@ -227,6 +230,8 @@ def fetch_result():
 
 @app.route("/explanation", methods=["POST"])
 def launch_explanation_calculation():
+    # TODO check for supported model!
+
     inp_json = request.get_json()
 
     if not validator.is_valid(inp_json):
