@@ -3,8 +3,10 @@ import json
 import logging
 import os
 import sys
+from enum import Enum, auto
 from logging.config import fileConfig
 
+import pymongo
 import requests
 from bson import objectid
 from celery import Celery
@@ -30,8 +32,8 @@ DEBUG_ENV = bool(os.getenv("DEBUG_ENV", True))
 # SERVING_URL = os.getenv("SERVING_URL", "httplocalhost")
 # MONITORING_URL = os.getenv("MONITORING_URL")
 
-SERVING_URL = "http://localhost"
-MONITORING_URL = "http://localhost/monitoring"
+SERVING_URL = "https://hydro-serving.dev.hydrosphere.io/"
+MONITORING_URL = "https://hydro-serving.dev.hydrosphere.io/monitoring"
 
 MONGO_URL = os.getenv("MONGO_URL", "localhost")
 MONGO_PORT = int(os.getenv("MONGO_PORT", 27017))
@@ -64,7 +66,7 @@ app = Flask(__name__)
 CORS(app, expose_headers=['location'])
 
 connection_string = f"mongodb://{MONGO_URL}:{MONGO_PORT}"
-# if MONGO_USER is not None and MONGO_PASS is not None:
+# if MONGO_USER is not None and MONGO_PASS is not None: # TODO remove before merging into master
 #     connection_string = f"mongodb://{MONGO_USER}:{MONGO_PASS}@{MONGO_URL}:{MONGO_PORT}"
 
 app.config['CELERY_BROKER_URL'] = f"{connection_string}/celery_broker?authSource={MONGO_AUTH_DB}"
@@ -80,6 +82,16 @@ celery.conf.update({"CELERY_DISABLE_RATE_LIMITS": True})
 
 import anchor_tasks
 import rise_tasks
+
+TASKS = {"anchor": anchor_tasks.tasks.anchor_task}
+
+
+class ExplanationState(Enum):
+    NOT_CALLED = auto()
+    PENDING = auto()
+    STARTED = auto()
+    SUCCESS = auto()
+    FAILED = auto()
 
 
 @app.route("/", methods=['GET'])
@@ -158,13 +170,7 @@ def get_task_status():
     method = request.args['method']
     task_id = request.args['task_id']
 
-    available_methods = ['rise', 'anchor']
-    if method == "rise":
-        task = rise_tasks.tasks.rise_task.AsyncResult(task_id)
-    elif method == "anchor":
-        task = anchor_tasks.tasks.anchor_task.AsyncResult(task_id)
-    else:
-        raise ValueError("Invalid method - expected [{}], got".format(available_methods, method))
+    task = TASKS[method].AsyncResult(task_id)
 
     response = {
         'state': task.state,
@@ -199,13 +205,24 @@ def fetch_result():
     model_version_id = int(request.args['model_version_id'])
 
     explanation = db[method].find_one({"model_version_id": model_version_id, "explained_request_id": request_id})
-    logging.info(explanation)
+
+    task_state = TASKS[method].AsyncResult("celery_task_id").state
+    if task_state == "FAILED":
+        return jsonify({"state": ExplanationState.FAILED.name,
+                        "description": "Explanation task failed without description"})
 
     if explanation:
-        del explanation['_id']
-        return jsonify(explanation)
+        if 'result' in explanation:
+            return jsonify({"state": ExplanationState.SUCCESS.name,
+                            "description": "Explanation is ready",
+                            "response": explanation['response']})
+        else:
+            return jsonify({"state": explanation['state'],
+                            "description": explanation['description']})
+
     else:
-        return Response(status=404)
+        return jsonify({"state": ExplanationState.NOT_CALLED.name,
+                        "description": "Explanation was never requested"})
 
 
 @app.route("/explanation", methods=["POST"])
@@ -229,24 +246,34 @@ def launch_explanation_calculation():
 
     logging.info(f"Received request to explain request={explained_request_id} of model {model_version_id} with {method}")
 
+    # Check for existing explanations requests for this method, model and request.
+    explanation = db[method].find_one({"model_version_id": model_version_id,
+                                       "explained_request_id": explained_request_id},
+                                      sort=[("_id", pymongo.DESCENDING)])
+    if explanation:
+        logging.info(f"Found existing request for {method} explanation for {model_version_id} - {explained_request_id}")
+        logging.info(explanation)
+        return jsonify({"state": explanation['state'],
+                        "description": explanation['description']})
+
     explanation_job_description = {'created_at': datetime.datetime.now(),
                                    'model_version_id': model_version_id,
                                    'explained_request_id': explained_request_id,
+                                   "state": ExplanationState.PENDING.name,
+                                   "description": "Received explanation request",
                                    'method': method}
 
     explanation_id = db[method].insert_one(explanation_job_description).inserted_id
-
-    logging.debug("stored into db")
+    logging.info(f"Stored request into mongodb for {method} explanation for {model_version_id} - {explained_request_id}")
 
     task_async_result = task.delay(str(explanation_id))
 
-    logging.debug("explanation task launched")
-
     explanation_id = objectid.ObjectId(explanation_id)
     db[method].find_one_and_update({"_id": explanation_id},
-                                   {"$set": {"celery_task_id": task_async_result.id}})
+                                   {"$set": {"celery_task_id": task_async_result.id,
+                                             "description": "Explanation is queued"}})
 
-    return jsonify({}), 202, {'Location': f'/rootcause/get_task_status?method={method}&task_id={task_async_result.id}'}
+    return jsonify({}), 202
 
 
 @app.route("/config", methods=['GET', 'PATCH'])
