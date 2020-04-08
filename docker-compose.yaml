@@ -1,0 +1,46 @@
+version: "3.5"
+
+
+networks:
+  hydronet:
+    name: demo_hydronet
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.16.0.0/24
+  extnet:
+    driver: bridge
+
+services:
+
+  rootcause-worker:
+    build: .
+    container_name: rootcause-worker
+    command: celery -A app.celery worker -l info --pool=solo
+    depends_on:
+      - mongodb
+    networks:
+      - hydronet
+      - extnet
+
+  rootcause:
+    build: .
+    container_name: rootcause
+    command: python app.py
+    depends_on:
+      - mongodb
+      - rootcause-worker
+    ports:
+      - "5000:5000"
+    networks:
+      - hydronet
+      - extnet
+
+  mongodb:
+    image: mongo
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    networks:
+      - extnet
+      - hydronet

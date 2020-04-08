@@ -9,6 +9,7 @@ import hydro_serving_grpc as hs
 import hydro_serving_grpc.gateway as hsg
 import numpy as np
 import pandas as pd
+import pymongo
 import requests
 from anchor2 import TabularExplainer
 from bson import objectid
@@ -16,46 +17,41 @@ from hydrosdk.model import Model
 from hydrosdk.servable import Servable
 from pymongo import MongoClient
 from pymongo.database import Database
+from s3fs.core import S3FileSystem
 
 import utils
-from app import celery, get_mongo_client, hs_cluster, MONITORING_URL, ExplanationState
+from app import celery, get_mongo_client, hs_cluster, MONITORING_URL, ExplanationState, S3_ENDPOINT, GRPC_ADDRESS
 from utils import TabularContractType
 
 BEAM_SELECTOR_PARAMETER_NAMES = ("delta", 'tolerance', 'batch_size', 'beam_size', "anchor_pool_size")
 
 
 def get_anchor_classifier_fn(servable: Servable, feature_order, explained_tensor_name) -> Callable:
-    # channel = grpc.secure_channel(SERVING_URL, credentials=grpc.ssl_channel_credentials())
+    # channel = grpc.secure_channel(GRPC_ADDRESS, credentials=grpc.ssl_channel_credentials())
+    channel = grpc.insecure_channel(GRPC_ADDRESS)
 
-    # TODO change before production deploy
-    channel = grpc.secure_channel("hydro-serving.dev.hydrosphere.io", credentials=grpc.ssl_channel_credentials())
-    # channel = grpc.insecure_channel("localhost:9090")
     stub = hsg.GatewayServiceStub(channel)
 
     def classifier_fn(x: np.array):
+
         if len(x.shape) == 1:
             x = x.reshape(1, -1)
 
         output_aggregator = []
 
         for row in x:
+            # FIXME[MVP] use correct input dtypes, do not cast everything to int right now
             _x_df = pd.DataFrame(row.reshape((1, -1)), columns=feature_order).astype(int)
-
-            # FIXME[MVP] use correct input dtypes
-            # _x_df = _x_df.astype(contract.input_dtypes, copy=False)
 
             _x_proto = dict([(name, hs.TensorProto(dtype=hs.DT_INT64,
                                                    int64_val=value.to_list(),
                                                    tensor_shape=hs.TensorShapeProto())) for name, value in _x_df.iteritems()])
 
-            # predict_request = hsg.ServablePredictRequest(servable_name=servable.name, data=_x_proto)
-
             predict_request = hsg.ServablePredictRequest(servable_name=servable.name, data=_x_proto)
 
             response = stub.ShadowlessPredictServable(predict_request)
-            decoded_response = dict([(tensor_name, tensor_proto.int64_val) for tensor_name, tensor_proto in response.outputs.items()])[
-                explained_tensor_name]
-            output_aggregator.append([decoded_response])
+            decoded_response = dict([(tensor_name, tensor_proto.int64_val) for tensor_name, tensor_proto in response.outputs.items()])
+            output_aggregator.append([decoded_response[explained_tensor_name]])
         return np.array(output_aggregator)
 
     return classifier_fn
@@ -81,16 +77,19 @@ def get_anchor_feature_names(reqstore_data: pd.DataFrame, model_tabular_contract
 
 @celery.task
 def anchor_task(explanation_id: str):
-    #  TODO[Optimisation] if mongo anchor cache is we can check anchor presence by binary mask
+    #  [Optimisation?] if mongo anchor cache is we can check anchor presence by binary mask
     #  ex: db.collection.save({ _id: 1, a: 54, binaryValueofA: "00110110" })
     #  ex: db.collection.find( { a: { $bitsAllSet: [ 1, 5 ] } } )
 
     logger.info(f"Celery task for explanation {explanation_id} is launched.")
 
-    mongo_client: MongoClient = get_mongo_client()
-    db: Database = mongo_client['root_cause']
+    try:
+        mongo_client: MongoClient = get_mongo_client()
+        db: Database = mongo_client['root_cause']
+    except:
+        logger.error("Failed to connect to Mongodb")
 
-    def error_state(error_msg):
+    def log_error_state(error_msg):
         logger.error(error_msg)
         db.anchor.find_one_and_update({"_id": objectid.ObjectId(explanation_id)},
                                       {"$set": {"state": ExplanationState.FAILED.name,
@@ -104,16 +103,28 @@ def anchor_task(explanation_id: str):
     model_version_id = int(job_json['model_version_id'])
     explained_request_id = job_json['explained_request_id']
 
-    # Fetch config for this model version. If no config provided - get default one
-    job_config = db.configs.find_one({"method": "anchor",
-                                      "model_version_id": model_version_id})
-    if not job_config:
-        job_config = utils.get_default_config("anchor")
+    try:
+        # Fetch config for this model version. If no config provided - get default one
+        job_config = db.configs.find_one({"method": "anchor",
+                                          "model_version_id": model_version_id},
+                                         sort=[("_id", pymongo.DESCENDING)])
+        if not job_config:
+            job_config = utils.get_default_config("anchor")
 
-    model_version = Model.find_by_id(hs_cluster, model_version_id)
-    input_field_names = [t.name for t in model_version.contract.predict.inputs]
-    output_field_names = [t.name for t in model_version.contract.predict.outputs]
-    logger.info(f"{explanation_id} - Feature names used for calculating explanation: {input_field_names}")
+        if not job_config:
+            raise ValueError("job config is none")
+    except Exception as e:
+        log_error_state(f"Failed to load config for this job {e}")
+        return str(explanation_id)
+
+    try:
+        model_version = Model.find_by_id(hs_cluster, model_version_id)
+        input_field_names = [t.name for t in model_version.contract.predict.inputs]
+        output_field_names = [t.name for t in model_version.contract.predict.outputs]
+        logger.info(f"{explanation_id} - Feature names used for calculating explanation: {input_field_names}")
+    except Exception as e:
+        log_error_state(f"Failed to connect to the model. {e}")
+        return str(explanation_id)
 
     try:
         explained_tensor_name = job_config['output_explained_tensor_name']
@@ -124,26 +135,28 @@ def anchor_task(explanation_id: str):
         explained_request: np.array = get_anchor_explained_instance(explained_request_id, input_field_names)
 
         logger.debug(f"{explanation_id} - restored request is: {explained_request}")
-        assert explained_request.size > 0, "Restored sample should not be empty"
-    except:
-        error_state("Unable to load explained request")
+        if explained_request.size < 0:
+            raise ValueError("Explained request should not be empty")
+    except Exception as e:
+        log_error_state(f"Unable to load explained request. {e}.")
         return str(explanation_id)
 
     try:
         logger.info(f"{explanation_id} - connecting to monitoring to get url to training data")
         s3_training_data_path = requests.get(f"{MONITORING_URL}/training_data?modelVersionId={model_version_id}").json()[0]
-        # TODO change to Monitoring get
-        s3_training_data_path = "s3://feature-lake/training-data/53/training_data532034320489197967253.csv"
 
         logger.info(f"{explanation_id} - started fetching training data, url: {s3_training_data_path}")
         started_downloading_data_time = timer()
-        training_data = pd.read_csv(s3_training_data_path)
+
+        s3 = S3FileSystem(client_kwargs={'endpoint_url': S3_ENDPOINT})
+        training_data = pd.read_csv(s3.open(s3_training_data_path, mode='rb'))
+
         logger.info(f"{explanation_id} - finished loading training data in {timer() - started_downloading_data_time:.2f} seconds")
 
         training_data = training_data.sample(job_config['training_subsample_size'])
         training_data = training_data[input_field_names]  # Reorder columns according to their order
-    except:
-        error_state("Unable to load training data")
+    except Exception as e:
+        log_error_state(f"Unable to load training data. {e}")
         return str(explanation_id)
 
     try:
@@ -154,8 +167,8 @@ def anchor_task(explanation_id: str):
                                                  metadata={"created_by": "rootcause"})
         # TODO poll for service status!
         sleep(10)
-    except:
-        error_state("Unable to create a new servable")
+    except Exception as e:
+        log_error_state(f"Unable to create a new servable. {e}")
         return str(explanation_id)
 
     try:
@@ -175,8 +188,8 @@ def anchor_task(explanation_id: str):
                                                                                       explained_tensor_name=explained_tensor_name),
                                                threshold=job_config['threshold'],
                                                selector_params=beam_selector_parameters)
-    except:
-        error_state("Error happened during iterating over possible explanations")
+    except Exception as e:
+        log_error_state(f"Error happened during iterating over possible explanations. {e}")
         return str(explanation_id)
     finally:
         # Remove temporary servable
@@ -186,10 +199,11 @@ def anchor_task(explanation_id: str):
                    "coverage": explanation.coverage(),
                    "precision": explanation.precision()}
 
-    db.anchor.update_one({"_id": explanation_id}, {"$set": {'result': result_json,
-                                                            "state": ExplanationState.SUCCESS.name,
-                                                            "description": "Explanation successfully computed",
-                                                            "completed_at": datetime.datetime.now()}})
+    db.anchor.update_one({"_id": objectid.ObjectId(explanation_id)},
+                         {"$set": {'result': result_json,
+                                   "state": ExplanationState.SUCCESS.name,
+                                   "description": "Explanation successfully computed",
+                                   "completed_at": datetime.datetime.now()}})
 
     logger.info(f"{explanation_id} - Finished computing explanation.")
 

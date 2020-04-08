@@ -22,26 +22,36 @@ import utils
 
 fileConfig("logging_config.ini")
 
+
+class ExplanationState(Enum):
+    NOT_CALLED = auto()
+    PENDING = auto()
+    STARTED = auto()
+    SUCCESS = auto()
+    FAILED = auto()
+    NOT_SUPPORTED = auto()
+
+
 with open("version.json") as version_file:
     BUILDINFO = json.load(version_file)  # Load buildinfo with branchName, headCommitId and version label
     BUILDINFO['pythonVersion'] = sys.version  # Augment with python runtime version
 
-DEBUG_ENV = bool(os.getenv("DEBUG_ENV", True))
+DEBUG_ENV = bool(os.getenv("DEBUG", True))
 
-# TODO return before merge into master
-# SERVING_URL = os.getenv("SERVING_URL", "httplocalhost")
-# MONITORING_URL = os.getenv("MONITORING_URL")
+HS_CLUSTER_ADDRESS = os.getenv("SERVING_URL")
+GRPC_ADDRESS = os.getenv("GRPC_ADDRESS")
+MONITORING_URL = f"{HS_CLUSTER_ADDRESS}/monitoring"
 
-SERVING_URL = "https://hydro-serving.dev.hydrosphere.io/"
-MONITORING_URL = "https://hydro-serving.dev.hydrosphere.io/monitoring"
+S3_ENDPOINT = os.getenv("S3_ENDPOINT")
 
-MONGO_URL = os.getenv("MONGO_URL", "localhost")
-MONGO_PORT = int(os.getenv("MONGO_PORT", 27017))
-MONGO_AUTH_DB = os.getenv("MONGO_AUTH_DB", "admin")
+MONGO_URL = os.getenv("MONGO_URL")
+MONGO_PORT = int(os.getenv("MONGO_PORT"))
+
+MONGO_AUTH_DB = os.getenv("MONGO_AUTH_DB")
 MONGO_USER = os.getenv("MONGO_USER")
 MONGO_PASS = os.getenv("MONGO_PASS")
 
-CONFIG_COLLECTION = os.getenv("CONFIG_COLLECTION_NAME", "config")
+CONFIG_COLLECTION = "config"
 
 with open("json_schemas/explanation_request.json") as f:
     REQUEST_JSON_SCHEMA = json.load(f)
@@ -49,25 +59,24 @@ with open("json_schemas/explanation_request.json") as f:
 
 
 def get_mongo_client():
-    return MongoClient()
-    # TODO return before merge into master
-    # return MongoClient(host=MONGO_URL, port=MONGO_PORT, maxPoolSize=200,
-    #                    username=MONGO_USER, password=MONGO_PASS,
-    #                    authSource=MONGO_AUTH_DB)
+    return MongoClient(host=MONGO_URL, port=MONGO_PORT, maxPoolSize=200,
+                       username=MONGO_USER, password=MONGO_PASS,
+                       authSource=MONGO_AUTH_DB)
 
 
 mongo_client = get_mongo_client()
 db = mongo_client['root_cause']
 
-hs_cluster = Cluster(SERVING_URL)
+hs_cluster = Cluster(HS_CLUSTER_ADDRESS)
 
 app = Flask(__name__)
+app.config["APPLICATION_ROOT"] = os.getenv("APPLICATION_ROOT", "rootcause")
 
 CORS(app, expose_headers=['location'])
 
 connection_string = f"mongodb://{MONGO_URL}:{MONGO_PORT}"
-# if MONGO_USER is not None and MONGO_PASS is not None: # TODO remove before merging into master
-#     connection_string = f"mongodb://{MONGO_USER}:{MONGO_PASS}@{MONGO_URL}:{MONGO_PORT}"
+if MONGO_USER is not None and MONGO_PASS is not None:
+    connection_string = f"mongodb://{MONGO_USER}:{MONGO_PASS}@{MONGO_URL}:{MONGO_PORT}"
 
 app.config['CELERY_BROKER_URL'] = f"{connection_string}/celery_broker?authSource={MONGO_AUTH_DB}"
 app.config['CELERY_RESULT_BACKEND'] = f"{connection_string}/celery_backend?authSource={MONGO_AUTH_DB}"
@@ -84,15 +93,6 @@ import anchor_tasks
 import rise_tasks
 
 TASKS = {"anchor": anchor_tasks.tasks.anchor_task}
-
-
-class ExplanationState(Enum):
-    NOT_CALLED = auto()
-    PENDING = auto()
-    STARTED = auto()
-    SUCCESS = auto()
-    FAILED = auto()
-    NOT_SUPPORTED = auto()
 
 
 @app.route("/", methods=['GET'])
@@ -218,9 +218,10 @@ def fetch_result():
         if 'result' in explanation:
             return jsonify({"state": ExplanationState.SUCCESS.name,
                             "description": "Explanation is ready",
-                            "response": explanation['response']})
+                            "result": explanation['result']})
         else:
             return jsonify({"state": explanation['state'],
+                            "celery_state": task_state,
                             "description": explanation['description']})
 
     else:
@@ -257,6 +258,7 @@ def launch_explanation_calculation():
                                       sort=[("_id", pymongo.DESCENDING)])
     if explanation:
         logging.info(f"Found existing request for {method} explanation for {model_version_id} - {explained_request_id}")
+
         logging.info(explanation)
         return jsonify({"state": explanation['state'],
                         "description": explanation['description']})
