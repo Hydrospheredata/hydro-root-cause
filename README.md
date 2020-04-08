@@ -9,12 +9,13 @@ You can test anchor and rise with `python tests/test_anchor_on_multiple_adult_mo
 
 ## Which models are eligible for creating an auto-od metric?
  hydro-root-cause creates explanations for tabular or image tensors.
- > Right now only tabular explanations are being tested
+ > Right now only tabular explanations are available
   
 If model signature is not supported, then there are no way to ask for explanation and explanation status will always be `NOT_SUPPORTED`
  
- Model signature is considered supported when:
- > TODO
+ Model signature is considered supported when it consists of numerical scalar fields only. It should also have output field with name
+ specified in `config['explained_output_field_name']`. If there are no such tensor, model signature will be considered `NOT_SUPPORTED`.
+ You can change this tensor by update config during runtime, and model status will be refreshed.
 
  Supported fields are:
  * of scalar shape
@@ -30,8 +31,8 @@ In future more model fields will be supported.
 
 ## Environment variables to configure service while deploying
 Addresses to other services:
-* `HS_CLUSTER_ADDRESS` - http address of hydro-serving cluster, used to create `hydrosdk.Cluster(HS_CLUSTER_ADDRESS)`
-* `SERVING_URL` - grpc address,
+* `HTTP_CLUSTER_ADDRESS` - http address of hydro-serving cluster, used to create `hydrosdk.Cluster(HS_CLUSTER_ADDRESS)`
+* `GRPC_CLUSTER_ADDRESS` - grpc address
 
 MongoDB parameters:
 * `MONGO_URL`
@@ -44,7 +45,7 @@ MongoDB parameters:
 AWS/Minio parameters:
 * `AWS_ACCESS_KEY_ID`
 * `AWS_SECRET_ACCESS_KEY`
-* `AWS_STORAGE_ENDPOINT`
+* `S3_ENDOPOINT`
 
 Flask server parameters:
 * `APPLICATION_ROOT` - prefix of all routes specified in [hydro_auto_od_openapi.yaml](hydro-auto-od-openapi.yaml)
