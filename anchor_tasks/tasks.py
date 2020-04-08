@@ -21,7 +21,6 @@ from s3fs.core import S3FileSystem
 
 import utils
 from app import celery, get_mongo_client, hs_cluster, MONITORING_URL, ExplanationState, S3_ENDPOINT, GRPC_ADDRESS
-from utils import TabularContractType
 
 BEAM_SELECTOR_PARAMETER_NAMES = ("delta", 'tolerance', 'batch_size', 'beam_size', "anchor_pool_size")
 
@@ -62,17 +61,6 @@ def get_anchor_explained_instance(request_id, feature_names):
     logger.info(f"{MONITORING_URL}/checks/{request_id}")
     request_wo_checks = dict([(f_name, request_with_checks[f_name]) for f_name in feature_names])
     return np.array(pd.Series(request_wo_checks))
-
-
-def get_anchor_feature_names(reqstore_data: pd.DataFrame, model_tabular_contract_type):
-    if model_tabular_contract_type == TabularContractType.SINGLE_TENSOR:
-        return list(range(reqstore_data.shape[1]))
-    elif model_tabular_contract_type == TabularContractType.SCALAR:
-        return list(reqstore_data.columns)
-    elif model_tabular_contract_type == TabularContractType.COLUMNAR:
-        return list(reqstore_data.columns)
-    else:
-        raise ValueError("Unrecognized tabular signature type")
 
 
 @celery.task
@@ -127,7 +115,7 @@ def anchor_task(explanation_id: str):
         return str(explanation_id)
 
     try:
-        explained_tensor_name = job_config['output_explained_tensor_name']
+        explained_tensor_name = job_config['explained_output_field_name']
         if explained_tensor_name not in output_field_names:
             raise ValueError(f"RootCause is configure to explain '{explained_tensor_name}' tensor. "
                              f"{model_version.name}v{model_version.version} have to return '{explained_tensor_name}' tensor.")

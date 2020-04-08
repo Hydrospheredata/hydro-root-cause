@@ -13,12 +13,9 @@ from celery import Celery
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 from hydrosdk.cluster import Cluster
-from hydrosdk.model import Model
 from jsonschema import Draft7Validator
 from pymongo import MongoClient
 from waitress import serve
-
-import utils
 
 fileConfig("logging_config.ini")
 
@@ -89,6 +86,7 @@ celery.autodiscover_tasks(["rise_tasks", "anchor_tasks"], force=True)
 celery.conf.update(app.config)
 celery.conf.update({"CELERY_DISABLE_RATE_LIMITS": True})
 
+import utils
 import anchor_tasks
 import rise_tasks
 
@@ -102,68 +100,11 @@ def hello():
 
 @app.route("/buildinfo", methods=['GET'])
 def buildinfo():
-    logging.info("check")
     return jsonify(BUILDINFO)
 
 
-@app.route("/status", methods=['GET'])
-def get_request_status():
-    possible_args = {"model_version_id", "request_id"}
-    if set(request.args.keys()) != possible_args:
-        return jsonify({"message": f"Expected args: {possible_args}. Provided args: {set(request.args.keys())}"}), 400
-
-    model_version_id = int(request.args['model_version_id'])
-    explained_request_id = request.args['request_id']
-
-    try:
-        model = Model.find_by_id(hs_cluster, model_id=model_version_id)
-    except ValueError as e:
-        return jsonify({"message": f"Unable to found model version: {model_version_id}", "error": str(e)}), 404
-
-    model_has_training_data = len(requests.get(f"{MONITORING_URL}/training_data?modelVersionId={model_version_id}").json()) > 0
-
-    # TODO check for name of explained tensor name!
-    method_support_statuses = utils.get_method_support_statuses(model.contract.predict, model_has_training_data)
-
-    supported_methods = [method_status['name'] for method_status in method_support_statuses if method_status['supported']]
-
-    try:
-        rootcause_methods_statuses = []
-        for method in supported_methods:
-            response = {"method": method}
-            instance_doc = db[method].find_one({"explained_request_id": {"$eq": explained_request_id},
-                                                "model_version_id": {"$eq": model_version_id}})
-
-            if instance_doc is None:
-                response['status'] = {"state": "NOT_QUEUED"}
-            else:
-                task_id = instance_doc['celery_task_id']
-                response['status'] = get_task_status(method=method, task_id=task_id).get_json()
-            rootcause_methods_statuses.append(response)
-    except Exception as e:
-        logging.exception("Exception raised during fetching rootcause statuses")
-        return jsonify({"message": f"{str(e)}"}), 500
-
-    return jsonify(rootcause_methods_statuses)
-
-
-@app.route("/supported_methods", methods=['GET'])
-def get_supported_methods():
-    possible_args = {"model_version_id"}
-    if set(request.args.keys()) != possible_args:
-        return jsonify({"message": f"Expected args: {possible_args}. Provided args: {set(request.args.keys())}"}), 400
-
-    model_version_id = int(request.args['model_version_id'])
-    model = Model.find_by_id(hs_cluster, model_version_id)
-    model_has_training_data = len(requests.get(f"{MONITORING_URL}/training_data?modelVersionId={model_version_id}").json()) > 0
-    # TODO check for name of explained tensor name!
-    supported_endpoints = utils.get_method_support_statuses(model.contract.predict, model_has_training_data)
-
-    return jsonify({"method_support_statuses": supported_endpoints})
-
-
 @app.route('/task_status', methods=["GET"])
-def get_task_status():
+def get_celery_task_status():
     possible_args = {"method", "task_id"}
     if set(request.args.keys()) != possible_args:
         return jsonify({"message": f"Expected args: {possible_args}. Provided args: {set(request.args.keys())}"}), 400
@@ -177,28 +118,11 @@ def get_task_status():
         'state': task.state,
         'task_id': task_id
     }
-
-    if task.state == 'PENDING':
-        # job did not start yet, do nothing
-        pass
-    elif task.state == 'SUCCESS':
-        # job completed, return url to result
-        response['result'] = str(task.result)
-
-    elif task.state == "STARTED":
-        # job is in progress, return progress
-        response['progress'] = task.info['progress']
-    else:
-        # something went wrong in the background job, return the exception raised
-        response['description'] = str(task.info)
-
     return jsonify(response)
 
 
 @app.route('/explanation', methods=["GET"])
-def fetch_result():
-    # TODO check for supported model!
-
+def get_explanation_status():
     possible_args = {"model_version_id", "explained_request_id", "method"}
     if set(request.args.keys()) != possible_args:
         return jsonify({"message": f"Expected args: {possible_args}. Provided args: {set(request.args.keys())}"}), 400
@@ -207,32 +131,26 @@ def fetch_result():
     request_id = request.args['explained_request_id']
     model_version_id = int(request.args['model_version_id'])
 
+    model_supported, support_description = utils.check_model_version_support(db, method, model_version_id)
+    if not model_supported:
+        return jsonify({"state": ExplanationState.NOT_SUPPORTED.name,
+                        "description": support_description})
+
+    # TODO check task state - if it is "FAILED", and state in mongodb is not - discard mongodb state and description, and return FAILED
     explanation = db[method].find_one({"model_version_id": model_version_id, "explained_request_id": request_id})
-
-    task_state = TASKS[method].AsyncResult("celery_task_id").state
-    if task_state == "FAILED":
-        return jsonify({"state": ExplanationState.FAILED.name,
-                        "description": "Explanation task failed without description"})
-
     if explanation:
+        response = {"state": explanation['state'],
+                    "description": explanation['description']}
         if 'result' in explanation:
-            return jsonify({"state": ExplanationState.SUCCESS.name,
-                            "description": "Explanation is ready",
-                            "result": explanation['result']})
-        else:
-            return jsonify({"state": explanation['state'],
-                            "celery_state": task_state,
-                            "description": explanation['description']})
-
+            response['result'] = explanation['result']
+        return jsonify(response)
     else:
         return jsonify({"state": ExplanationState.NOT_CALLED.name,
                         "description": "Explanation was never requested"})
 
 
 @app.route("/explanation", methods=["POST"])
-def launch_explanation_calculation():
-    # TODO check for supported model!
-
+def calculate_new_explanation():
     inp_json = request.get_json()
 
     if not validator.is_valid(inp_json):
@@ -242,6 +160,12 @@ def launch_explanation_calculation():
     model_version_id = inp_json['model_version_id']
     explained_request_id = inp_json['explained_request_id']
     method = inp_json['method']
+
+    has_training_data = len(requests.get(f"{MONITORING_URL}/training_data?modelVersionId={model_version_id}").json()) > 0
+    model_supported, support_description = utils.check_model_version_support(db, method, model_version_id)
+    if not model_supported:
+        return jsonify({"state": ExplanationState.NOT_SUPPORTED.name,
+                        "description": support_description})
 
     if method == "anchor":
         task = anchor_tasks.tasks.anchor_task
@@ -258,10 +182,11 @@ def launch_explanation_calculation():
                                       sort=[("_id", pymongo.DESCENDING)])
     if explanation:
         logging.info(f"Found existing request for {method} explanation for {model_version_id} - {explained_request_id}")
-
-        logging.info(explanation)
-        return jsonify({"state": explanation['state'],
-                        "description": explanation['description']})
+        response = {"state": explanation['state'],
+                    "description": explanation['description']}
+        if 'result' in explanation:
+            response['result'] = explanation['result']
+        return jsonify(response)
 
     explanation_job_description = {'created_at': datetime.datetime.now(),
                                    'model_version_id': model_version_id,
@@ -292,14 +217,7 @@ def get_params():
     method = request.args['method']
     model_version_id = int(request.args['model_version_id'])
 
-    # Fetch the latest config from the config collection in mongo
-    config_doc = list(db[CONFIG_COLLECTION].find({"method": method,
-                                                  "model_version_id": model_version_id}).sort([['_id', -1]]).limit(1))
-
-    if not config_doc:
-        current_config = utils.get_default_config(method)
-    else:
-        current_config = config_doc[0]['config']
+    current_config = utils.get_latest_config(db, method, model_version_id)
 
     if request.method == 'GET':
         return jsonify(current_config)

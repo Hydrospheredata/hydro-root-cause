@@ -5,7 +5,6 @@ import unittest
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(f"{SCRIPT_DIR}/..")
 
-from utils import get_method_support_statuses
 
 # with open(f"{SCRIPT_DIR}/../hs_demos/adult_columnar/serving.yaml") as f:
 #     columnar_contract = HSContract.load(f)

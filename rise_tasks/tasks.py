@@ -52,7 +52,7 @@ def rise_task(self, explanation_id: str):
 
     predictor = None  # TODO get_temp_servable_copy_predictor
 
-    explained_image_probas = predictor.predict(input_image)[job_config['output_explained_tensor_name']][0]  # Reduce batch dim
+    explained_image_probas = predictor.predict(input_image)[job_config['explained_output_field_name']][0]  # Reduce batch dim
 
     # Return only top 10 classes as a result, to reduce response size
     top_10_classes = explained_image_probas.argsort()[::-1][:10]
@@ -77,7 +77,7 @@ def rise_task(self, explanation_id: str):
     rise_explainer = RiseImageExplainer()
 
     def classifier_fn(x):
-        return predictor.predict(x)[job_config['output_explained_tensor_name']]
+        return predictor.predict(x)[job_config['explained_output_field_name']]
 
     rise_explainer.fit(prediction_fn=classifier_fn,
                        input_size=job_config['input_size'],
