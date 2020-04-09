@@ -1,11 +1,10 @@
 import datetime
 import logging as logger
-from time import sleep
 from timeit import default_timer as timer
 from typing import Callable
 
 import grpc
-import hydro_serving_grpc as hs
+import hydro_serving_grpc as hs_grpc
 import hydro_serving_grpc.gateway as hsg
 import numpy as np
 import pandas as pd
@@ -42,9 +41,9 @@ def get_anchor_classifier_fn(servable: Servable, feature_order, explained_tensor
             # FIXME[MVP] use correct input dtypes, do not cast everything to int right now
             _x_df = pd.DataFrame(row.reshape((1, -1)), columns=feature_order).astype(int)
 
-            _x_proto = dict([(name, hs.TensorProto(dtype=hs.DT_INT64,
-                                                   int64_val=value.to_list(),
-                                                   tensor_shape=hs.TensorShapeProto())) for name, value in _x_df.iteritems()])
+            _x_proto = dict([(name, hs_grpc.TensorProto(dtype=hs_grpc.DT_INT64,
+                                                        int64_val=value.to_list(),
+                                                        tensor_shape=hs_grpc.TensorShapeProto())) for name, value in _x_df.iteritems()])
 
             predict_request = hsg.ServablePredictRequest(servable_name=servable.name, data=_x_proto)
 
@@ -148,13 +147,22 @@ def anchor_task(explanation_id: str):
         return str(explanation_id)
 
     try:
-        # Create temporary servable, so main servable won't be affected
-        tmp_servable: Servable = Servable.create(hs_cluster,
-                                                 model_version.name,
-                                                 model_version.version,
-                                                 metadata={"created_by": "rootcause"})
-        # TODO poll for service status!
-        sleep(10)
+        channel = grpc.insecure_channel(GRPC_ADDRESS)
+        manager_stub = hs_grpc.manager.ManagerServiceStub(channel=channel)
+
+        deploy_request = hs_grpc.manager.DeployServableRequest(version_id=model_version_id,
+                                                               metadata={"created_by": "rootcause"})
+
+        for servable in manager_stub.DeployServable(deploy_request):
+            logger.info(f"{servable.name} is {servable.status}")
+
+        if servable.status != 3:
+            raise ValueError(f"Invalid servable state came from GRPC stream - {servable.status}")
+
+        tmp_servable = Servable.get(hs_cluster, servable_name=servable.name)
+        # if tmp_servable.status is not ServableStatus.SERVING:
+        #     raise ValueError(f"Invalid servable state (fetched by HTTP)- {servable_status}")
+
     except Exception as e:
         log_error_state(f"Unable to create a new servable. {e}")
         return str(explanation_id)
