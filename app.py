@@ -35,9 +35,10 @@ with open("version.json") as version_file:
 
 DEBUG_ENV = bool(os.getenv("DEBUG", True))
 
-HS_CLUSTER_ADDRESS = os.getenv("SERVING_URL")
-GRPC_ADDRESS = os.getenv("GRPC_ADDRESS")
+HS_CLUSTER_ADDRESS = os.getenv("HTTP_UI_ADDRESS")
 MONITORING_URL = f"{HS_CLUSTER_ADDRESS}/monitoring"
+
+GRPC_ADDRESS = os.getenv("GRPC_UI_ADDRESS")
 
 S3_ENDPOINT = os.getenv("S3_ENDPOINT")
 
@@ -47,8 +48,6 @@ MONGO_PORT = int(os.getenv("MONGO_PORT"))
 MONGO_AUTH_DB = os.getenv("MONGO_AUTH_DB")
 MONGO_USER = os.getenv("MONGO_USER")
 MONGO_PASS = os.getenv("MONGO_PASS")
-
-CONFIG_COLLECTION = "config"
 
 with open("json_schemas/explanation_request.json") as f:
     REQUEST_JSON_SCHEMA = json.load(f)
@@ -67,7 +66,6 @@ db = mongo_client['root_cause']
 hs_cluster = Cluster(HS_CLUSTER_ADDRESS)
 
 app = Flask(__name__)
-app.config["APPLICATION_ROOT"] = os.getenv("APPLICATION_ROOT", "rootcause")
 
 CORS(app, expose_headers=['location'])
 
@@ -228,10 +226,10 @@ def get_params():
         new_config = {**current_config, **inp_json['config']}
 
         # Save patched version of config
-        db[CONFIG_COLLECTION].insert_one({"method": method,
-                                          'created_at': datetime.datetime.now(),
-                                          "config": new_config,
-                                          "model_version_id": model_version_id})
+        db["config"].insert_one({"method": method,
+                                 'created_at': datetime.datetime.now(),
+                                 "config": new_config,
+                                 "model_version_id": model_version_id})
         return Response(status=200)
     else:
         return Response(status=405)

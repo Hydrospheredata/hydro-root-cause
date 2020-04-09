@@ -1,8 +1,7 @@
 from typing import List
 
 import numpy as np
-from loguru import logger
-
+import logging as logger
 
 def _kl_bernoulli(p: float, q: float):
     """

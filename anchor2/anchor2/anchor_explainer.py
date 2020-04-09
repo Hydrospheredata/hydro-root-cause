@@ -1,9 +1,9 @@
+import logging as logger
 from abc import ABC, abstractmethod
 from typing import Union, List, Dict
 
 import numpy as np
 import pandas as pd
-from loguru import logger
 
 from .anchor_selector import BeamAnchorSearch, GreedyAnchorSearch
 from .tabular_explanation import TabularExplanation
@@ -71,11 +71,6 @@ class TabularExplainer(AnchorExplainer):
                 threshold=0.95,
                 selector_params: Dict = {},
                 verbose=True) -> TabularExplanation:
-
-        logger.disable("anchor2")
-
-        if verbose:
-            logger.enable("anchor2")
 
         if strategy == 'kl-lucb':
             logger.info("Using Kullback-Leibler LUCB method")
