@@ -1,6 +1,6 @@
 {
   "version": "0.0.1.1",
   "headCommit": "$Id$",
-  "currentBranch": "currentBranch",
+  "currentBranch": "dev",
   "pythonVersion": "specified_at_runtime"
 }

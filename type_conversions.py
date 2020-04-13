@@ -51,7 +51,7 @@ HS_DTYPE_TO_STR = {
     DT_COMPLEX128: "DT_COMPLEX128"
 }
 
-STR_TO_HS_DTYPE = dict([(v, k) for k, v in HS_DTYPE_TO_STR.items()])
+STR_TO_HS_DTYPE = dict([(v, k) for k, v in HS_DTYPE_TO_STR.items()] + [("DT_FLOAT", DT_FLOAT)])
 
 NP_DTYPE_TO_ARG_NAME = {
     np.dtype(np.float16): "half_val",
