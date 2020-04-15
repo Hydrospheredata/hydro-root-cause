@@ -1,0 +1,388 @@
+openapi: 3.0.1
+info:
+  version: 0.1.0
+  title: Swagger Hydrosphere Root Cause
+  description: Service which calculates black-box interpretatiobs for predictions tabular and image ML models with help of Anchor and Rise method correspondingly. Request the explanation, poll it's status, wait for Celery worker to compute the explanation, get the calculated interpretation.
+  contact:
+    email: ygavrilin@provectus.com
+servers:
+  - url: https://hydro-serving.dev.hydrosphere.io/rootcause
+    description: Development server
+paths:
+  /buildinfo:
+    get:
+      summary:  Get version information about the root-cause server instance
+      operationId: getBuildInfo
+      responses:
+        '200':
+          description: Successfully fetched service version details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BuildInfo"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /task_status:
+    get:
+      summary: Get status of a task in Celery queue
+      operationId: getTaskStatus
+      parameters:
+        - name: task_id
+          in: query
+          required: True
+          schema:
+            type: string
+            format: uid
+      responses:
+        '200':
+          description: A status of a task
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/TaskStatePending'
+                  - $ref: '#/components/schemas/TaskStateStarted'
+                  - $ref: '#/components/schemas/TaskStateSuccess'
+                  - $ref: '#/components/schemas/TaskStateFailed'
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /explanation:
+    get:
+      summary: Get calculated explanation
+      operationId: getExplanation
+      parameters:
+        - name: model_version_id
+          in: query
+          description: Model Version ID
+          required: true
+          schema:
+            type: integer
+        - name: explained_request_id
+          in: query
+          description: ID of a request stored in feature store
+          required: true
+          schema:
+            type: string
+        - name: method
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [anchor, rise]
+      responses:
+        '200':
+          description: An explanation status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  state:
+                    type: string
+                    enum: [NOT_CALLED, NOT_SUPPORTED, PENDING, STARTED, SUCCESS, FAILED]
+                  description:
+                    type: string
+                  result:
+                    oneOf:
+                      - $ref: "#/components/schemas/AnchorResponse"
+                      - $ref: "#/components/schemas/RiseResponse"
+    post:
+      summary: Create a request for explanation
+      operationId: requestExplanation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RootCauseRequest'
+      responses:
+        '202':
+          description: Explanation job was added to the queue
+          headers:
+            Location:
+              schema:
+                type: string
+              description: An URL to the /explanation endpoint, using which you can monitor explanation status. You can skip it, this is used for compliance with 202 status code
+        '303':
+          description: Explanation job was already scheduled previously
+          headers:
+            Location:
+              schema:
+                description: An URL to the task_status endpoint, using which you can monitor task status
+                type: string
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /config:
+    get:
+      summary: List of parameters specified for a model version
+      parameters:
+        - name: method
+          in: query
+          schema:
+            type: string
+            enum: [anchor, rise]
+        - name: model_version_id
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: A parameters specified for a model version and method
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/RiseConfig'
+                  - $ref: '#/components/schemas/AnchorConfig'
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    put:
+      summary: Set a set of parameters to the interpretability method for a model version
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/RiseConfig'
+                - $ref: '#/components/schemas/AnchorConfig'
+      responses:
+        '200':
+          description: Successfully changed params
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  schemas:
+    RootCauseRequest:
+      type: object
+      required:
+        - model_version_id
+        - explained_request_id
+        - method
+      properties:
+        model_version_id:
+          description: Unique ID of a model version
+          type: integer
+        explained_request_id:
+          description: Unique ID of a saved request
+          type: string
+        method:
+          description: One of the avaialable methods for interpretability
+          type: string
+          enum: [anchor, rise]
+    AnchorResponse:
+      type: object
+      required:
+        - precision
+        - coverage
+        - predicates
+      properties:
+        precision:
+          description: A ratio of times this explanation will be correct if applied to the domain it specifies
+          type: number
+        coverage:
+          description: A ratio of the domain this explanation covers
+          type: number
+        preidcates:
+          description: List of predicates united by AND will be make up an explanation
+          type: array
+          items:
+            type: string
+    RiseResponse:
+      type: array
+      items:
+        type: object
+        required:
+          - mask
+          - class
+          - probability
+        properties:
+          mask:
+            description: A single-channel flattened saliency map
+            type: integer
+            format: uint8
+          class:
+            description: A class for which saliency map is calculated
+            type: integer
+          probability:
+            description: A probability of image predicted as this class
+            type: number
+    RiseConfig:
+      type: object
+      properties:
+        number_of_masks:
+          description: Number of masks generated and evaluated by the explainer
+          type: integer
+          default: 1000
+          minimum: 100
+          maximum: 2000
+        mask_granularity:
+          description: Parameter specifies how many cells will be in one masks. Mask is a tensor of shape [mask_granularity; mask_granularity].
+          type: number
+          default: 7
+          minimum: 5
+        mask_density:
+          description: Parameter specifies how many cells will be present in the mask. More dense the matrix will be, more parts of the original image will be present after its multiplication with mask.
+          type: number
+          default: 0.5
+          exclusiveMinimum: True
+          exclusiveMaximum: True
+          minimum: 0
+          maximum: 1
+        explained_output_field_name:
+          description: Name of the tensor from model signature which will be used as an explained target during explanation calculation process. Tensor should represent probabilities per each class and is required to be float in range [0; 1] and to be of shape (-1, number_of_classes).
+          type: string
+          default: 'probabilities'
+    AnchorConfig:
+      type: object
+      properties:
+        ordinal_features_idx:
+          description: Indices of ordinal features. Right now hardcoded to [0, 11] to support adult demo
+          type: array
+          items:
+            type: integer
+          default: [0, 11]
+        training_subsample_size:
+          description: Parameter specifies how large will be sample for precision and coverage evaluation of potential anchors. Larger dataset means  better precision & coverage estimates, but longer computing time.
+          type: integer
+          minimum: 500
+          default: 5000
+        precision_threshold:
+          description: The minimum precision sufficient for  returning an anchor
+          type: number
+          exclusiveMinimum: True
+          minimum: 0
+          maximum: 1
+          default: 0.95
+        anchor_pool_size:
+          description: A number of anchors evaluated at each step of the selection process
+          type: integer
+          minimum: 1
+          default: 10
+        beam_size:
+          description: A number of anchors selected at each step of the selection process
+          type: integer
+          minimum: 1
+          default: 5
+        batch_size:
+          description: A number of samples evaluated at request of selector algorithm (kl-lucb)
+          type: integer
+          minimum: 1
+          default: 100
+        tolerance:
+          description: A minimum distance between lowest boundary of best-n arms and highest upper boundary of other arms to be achieved by an algorithm. A stopping criteria for an algorithm
+          type: number
+          exclusiveMinimum: True
+          exclusiveMaximum: True
+          minimum: 0
+          maximum: 1
+          default: 0.35
+        delta:
+          description: Mistake probability. It is the probability that chosen set of arm will not be a subset of optimal arms.
+          type: number
+          exclusiveMinimum: True
+          exclusiveMaximum: True
+          minimum: 0
+          maximum: 1
+          default: 0.25
+        explained_output_field_name:
+          description: Name of the tensor from model signature which will be used as an explanation target during explanation calculation process. Tensor should represent predicted class or class id is required to be integer of shape (-1, 1).
+          type: string
+          default: 'classes'
+    TaskStatePending:
+      type: object
+      required:
+        - state
+        - task_id
+      properties:
+        state:
+          type: string
+          enum:
+            - PENDING
+    TaskStateSuccess:
+      type: object
+      required:
+        - state
+        - task_id
+        - result_uri
+      properties:
+        state:
+          type: string
+          enum:
+            - SUCCESS
+        result_uri:
+          type: string
+    TaskStateStarted:
+      type: object
+      required:
+        - state
+        - task_id
+        - progress
+      properties:
+        state:
+          type: string
+          enum:
+            - STARTED
+        progress:
+          type: number
+          minimum: 0
+          maximum: 1
+    TaskStateFailed:
+      type: object
+      required:
+        - state
+        - task_id
+        - description
+      properties:
+        state:
+          type: string
+          enum:
+            - FAILED
+        description:
+          type: string
+    BuildInfo:
+      type: object
+      required:
+        - pythonVersion
+        - headCommit
+        - currentBranch
+        - version
+      properties:
+        pythonVersion:
+          type: string
+        headCommit:
+          type: string
+        currentBranch:
+          type: string
+        version:
+          type: string
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: integer
+        message:
+          type: string

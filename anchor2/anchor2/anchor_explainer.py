@@ -1,9 +1,9 @@
+import logging as logger
 from abc import ABC, abstractmethod
 from typing import Union, List, Dict
 
 import numpy as np
 import pandas as pd
-from loguru import logger
 
 from .anchor_selector import BeamAnchorSearch, GreedyAnchorSearch
 from .tabular_explanation import TabularExplanation
@@ -39,6 +39,7 @@ class TabularExplainer(AnchorExplainer):
         :param oh_encoded_categories: Dictionary of "Feature model_name" -> List of feature indices in data used for encoding this "feature model_name"
         """
         assert len(data.shape) == 2, "Data should be a matrix"
+
         # Store feature names to generate human-readable explanations
         if feature_names is not None:
             assert len(feature_names) == data.shape[1], "Length of feature names list must match number of columns"
@@ -70,11 +71,6 @@ class TabularExplainer(AnchorExplainer):
                 threshold=0.95,
                 selector_params: Dict = {},
                 verbose=True) -> TabularExplanation:
-
-        logger.disable("anchor2")
-
-        if verbose:
-            logger.enable("anchor2")
 
         if strategy == 'kl-lucb':
             logger.info("Using Kullback-Leibler LUCB method")

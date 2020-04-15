@@ -1,76 +1,10 @@
-from enum import Enum
+from typing import Tuple, Dict
 
-import numpy as np
-import pandas as pd
-from hydro_serving_grpc.reqstore import reqstore_client
+import requests
+from hydro_serving_grpc.contract import ModelSignature
+from hydrosdk.model import Model
 
-from contract import HSContract
-
-
-def get_reqstore_request(model_contract, rclient: reqstore_client.ReqstoreClient, folder, timestamp, uid: int):
-    request_response: reqstore_client.TsRecord = rclient.get(folder, timestamp, uid)
-    request = request_response.entries[0].request
-    input_tensors = model_contract.decode_request(request)
-    return input_tensors
-
-
-def extract_subsample_from_columnar_reqstore_entries(rs_entries, model) -> pd.DataFrame:
-    requests = [model.contract.decode_request(e.request) for e in rs_entries]
-
-    # concat requests into dataframe format
-    rs = []
-    feature_order = model.contract.input_names
-    for r in requests:
-        column_arrays = []
-        for feature_name in feature_order:
-            column_arrays.append(r[feature_name])
-        df = pd.DataFrame(np.hstack(column_arrays), columns=feature_order)
-        rs.append(df)
-    reqstore_data = pd.concat(rs)
-
-    # Sort columns according to feature names order
-    reqstore_data = reqstore_data.loc[:, model.contract.input_names]
-    reqstore_data.drop_duplicates(inplace=True)
-    return reqstore_data
-
-
-def extract_subsample_from_scalar_reqstore_entries(rs_entries, model) -> pd.DataFrame:
-    requests = [model.contract.decode_request(e.request) for e in rs_entries]
-
-    # concat requests into dataframe format
-    rs = []
-    feature_order = model.contract.input_names
-    for r in requests:
-        column_arrays = []
-        for feature_name in feature_order:
-            column_arrays.append([r[feature_name]])
-        df = pd.DataFrame(np.hstack(column_arrays).reshape((1, -1)), columns=feature_order)
-        rs.append(df)
-    reqstore_data = pd.concat(rs)
-
-    # Sort columns according to feature names order
-    reqstore_data = reqstore_data.loc[:, model.contract.input_names]
-    reqstore_data.drop_duplicates(inplace=True)
-    return reqstore_data
-
-
-def extract_subsample_from_tensor_reqstore_entries(rs_entries, model) -> pd.DataFrame:
-    requests = [model.contract.decode_request(e.request)['input'] for e in rs_entries]
-    data = np.vstack(requests)
-    df = pd.DataFrame(data)
-    df.drop_duplicates(inplace=True)
-    return df
-
-
-def fetch_reqstore_entries(rs_client, model, subsample_size):
-    # Get subsample to work with
-    model_id = model.id
-    rs_entries = []
-    for r in rs_client.subsampling(str(model_id), amount=subsample_size):
-        rs_entries.extend(r.entries)
-
-    valid_rs_entries = list(filter(lambda x: x.binary != b"", rs_entries))
-    return valid_rs_entries
+from app import hs_cluster, MONITORING_URL
 
 
 class AlwaysTrueObj(object):
@@ -81,89 +15,121 @@ class AlwaysTrueObj(object):
 AnyDimSize = AlwaysTrueObj()
 
 
-def contract_is_supported_by_rise(contract):
-    # TODO check for tensor profiling type
-
-    if 'probabilities' not in contract.output_names:
-        return False
-
+def contract_is_supported_by_rise(signature: ModelSignature, training_data_available,
+                                  output_explained_tensor_name="probabilities") -> Tuple[bool, str]:
+    # Rise supports batch and non\batch request of images of grayscale or 3 channeled.
     rise_supported_input_shapes = [(-1, AnyDimSize, AnyDimSize, 3),
                                    (-1, AnyDimSize, AnyDimSize, 1),
-                                   (-1, AnyDimSize, AnyDimSize),
-                                   (AnyDimSize, AnyDimSize, 3),
-                                   (AnyDimSize, AnyDimSize, 1),
-                                   (AnyDimSize, AnyDimSize)]
+                                   (-1, AnyDimSize, AnyDimSize), ]
 
-    if contract.number_of_input_tensors != 1:
-        return False
+    rise_supported_probabilities_shapes = [(-1, AnyDimSize), ]
+
+    if output_explained_tensor_name in [tensor.name for tensor in signature.outputs]:
+        probabilities_field = next(filter(lambda t: t.name == output_explained_tensor_name, signature.outputs))
+        probabilities_shape = tuple(map(lambda dim: dim.size, probabilities_field.shape.dim))
+        if probabilities_shape not in rise_supported_probabilities_shapes:
+            return False, f"Shape {probabilities_shape} of explained field '{output_explained_tensor_name}' is not supported" \
+                          f" You can change explained tensor by calling config"
+
     else:
-        input_tensor_name = contract.input_names[0]
-        input_tensor_shape = contract.input_shapes[input_tensor_name]
+        return False, f"No output explained field named '{output_explained_tensor_name}' in contract signature was found" \
+                      f" You can change explained tensor by calling config"
+
+    if len(signature.inputs) != 1:
+        # For now we support only signatures which take single image as an input
+        return False, "Only signatures with single tensor is supported right now"
+    else:
+        input_tensor = signature.inputs[0]
+        input_tensor_shape = tuple(map(lambda dim: dim.size, input_tensor.shape.dim))
         if input_tensor_shape not in rise_supported_input_shapes:
-            return False
+            return False, f"Input tensor shape {input_tensor_shape} is not supported"
+        # FIXME check for type. supported - int, uint, double, float
 
-        # Accept only floats, integers, unsigned integers
-        # https://docs.scipy.org/doc/numpy/reference/generated/numpy.dtype.kind.html#numpy.dtype.kind
-        input_tensor_dtype = contract.input_dtypes[input_tensor_name]
-        if input_tensor_dtype.kind not in ('i', 'f', 'u'):
-            return False
-
-    return True
+    return True, "Everything is fine"
 
 
-class TabularContractType(Enum):
-    INVALID = -1
-    SCALAR = 0
-    COLUMNAR = 1
-    SINGLE_TENSOR = 2
+def check_model_version_support(db, method, model_version_id) -> Tuple[bool, str]:
+    """
+    Checks whether model version is supported by particular method. Requires access to latest config to see which fields are being explained
+    :param db:
+    :param method:
+    :param model_version_id:
+    :return:
+    """
+    if method == 'anchor':
+        has_training_data = len(requests.get(f"{MONITORING_URL}/training_data?modelVersionId={model_version_id}").json()) > 0
 
+        if not has_training_data:
+            return False, "Unable to explain model version without training data."
 
-def get_tabular_contract_type(contract: HSContract) -> TabularContractType:
-    tensor_shapes = list(contract.input_shapes.values())
+        model_config = get_latest_config(db, method, model_version_id)
+        model_version = Model.find_by_id(hs_cluster, model_version_id)
+        signature = model_version.contract.predict
+        explained_output_field_name = model_config['explained_output_field_name']
 
-    if len(tensor_shapes) == 1 and 0 < len(tensor_shapes[0]) < 3:
-        return TabularContractType.SINGLE_TENSOR
-    elif all([shape == tuple() for shape in tensor_shapes]):
-        return TabularContractType.SCALAR
-    elif all([shape == (-1, AnyDimSize) for shape in tensor_shapes]):
-        return TabularContractType.COLUMNAR
+        if explained_output_field_name in [tensor.name for tensor in signature.outputs]:
+            classes_field = next(filter(lambda t: t.name == explained_output_field_name, signature.outputs))
+            classes_field_shape = tuple(map(lambda dim: dim.size, classes_field.shape.dim))
+            if classes_field_shape != tuple():
+                return False, f"Explained tensor '{explained_output_field_name}' is of unsupported shape - {classes_field_shape}." \
+                              f" You can change explained tensor by calling config"
+        else:
+            return False, f"Explained tensor is '{explained_output_field_name}' and it is not present in signature." \
+                          f" You can change explained tensor by calling config"
+
+        input_tensor_shapes = [tuple(map(lambda dim: dim.size, input_tensor.shape.dim)) for input_tensor in signature.inputs]
+        if not all([shape == tuple() for shape in input_tensor_shapes]):
+            return False, "This signature has invalid type, only signatures with all scalar fields are supported right now"
+        else:
+            return True, "Everything is fine"
     else:
-        return TabularContractType.INVALID
+        # TODO check for rise compatibility
+        return False, "rise is unavailable for now"
 
 
-def contract_is_supported_by_anchor(contract):
-    # TODO check for tensor profiling type (?)
+def get_latest_config(db, method, model_version_id) -> Dict:
+    """
+    Fetch the latest config from the config collection in mongo, if no config is stored in mongo, use default one
 
-    if 'classes' not in contract.output_names:
-        return False
+    :param db: config_coll
+    :param method:
+    :param model_version_id:
+    :return: dict with config variables
+    """
+    config_doc = list(db["config"].find({"method": method,
+                                         "model_version_id": model_version_id}).sort([['_id', -1]]).limit(1))
 
-    if contract.number_of_input_tensors == 1:
-        single_tensor_input_name = contract.input_names[0]
-        if contract.input_names[0] != "input":
-            return False
-        single_tensor_input_shape = contract.input_shapes[single_tensor_input_name]
-        if single_tensor_input_shape not in [(-1, AnyDimSize)]:
-            return False
+    if not config_doc:
+        latest_config = get_default_config(method)
     else:
-        tabular_contract_type = get_tabular_contract_type(contract)
-
-        if tabular_contract_type == TabularContractType.INVALID:
-            return False
-
-    # https://docs.scipy.org/doc/numpy/reference/generated/numpy.dtype.kind.html#numpy.dtype.kind
-    tensor_dtypes = list(contract.input_dtypes.values())
-    if any([dt.kind not in ("i", "u", "f") for dt in tensor_dtypes]):
-        return False
-
-    return True
+        latest_config = config_doc[0]['config']
+    return latest_config
 
 
-def get_supported_endpoints(contract):
-    supported_endpoints = []
+def get_default_config(method):
+    """
+    Default configuration for each interpretability method
+    :param method:
+    :return: dictionary with default parameters
+    """
+    if method == "rise":
+        return {"number_of_masks": 100,
+                "mask_granularity": 100,
+                "mask_density": 100,
+                "explained_output_field_name": "probabilities"}
+    elif method == "anchor":
 
-    if contract_is_supported_by_rise(contract):
-        supported_endpoints.append("rise")
-    if contract_is_supported_by_anchor(contract):
-        supported_endpoints.append("anchor")
-
-    return supported_endpoints
+        return {"explained_output_field_name": "classes",
+                "training_subsample_size": 10000,
+                "ordinal_features_idx": [0, 11],
+                "precision_threshold": 0.5,
+                "label_decoders": {},
+                "threshold": 0.5,
+                "oh_encoded_categories": {},
+                "anchor_pool_size": 10,
+                "beam_size": 5,
+                "batch_size": 100,
+                "tolerance": 0.35,
+                "delta": 0.25}
+    else:
+        raise ValueError(f"Invalid method {method} passed")

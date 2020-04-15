@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "method": {
+      "type": "string",
+      "enum": [
+        "rise",
+        "anchor"
+      ]
+    },
+    "config": {
+      "type": "object",
+      "properties": {
+        "a": {
+          "type": "integer"
+        },
+        "b": {
+          "type": "integer"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "anchor"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "config"
+        ],
+        "config": {
+          "required": [
+            "a1",
+            "a2"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "rise"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "config"
+        ],
+        "properties": {
+          "config": {
+            "additionalProperties": false,
+            "properties": {
+              "a": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "a"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

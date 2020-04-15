@@ -1,38 +1,55 @@
 import datetime
 import json
+import logging
 import os
 import sys
-from subprocess import check_output
+from enum import Enum, auto
+from logging.config import fileConfig
 
+import pymongo
+import requests
 from bson import objectid
 from celery import Celery
-from flask import Flask, request, jsonify, url_for
+from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
-from hydro_serving_grpc.reqstore import reqstore_client
+from hydrosdk.cluster import Cluster
 from jsonschema import Draft7Validator
-from loguru import logger
 from pymongo import MongoClient
 from waitress import serve
 
-import utils
-from client import HydroServingClient
+fileConfig("logging_config.ini")
 
-DEBUG_ENV = bool(os.getenv("DEBUG_ENV", True))
+
+class ExplanationState(Enum):
+    NOT_CALLED = auto()
+    PENDING = auto()
+    STARTED = auto()
+    SUCCESS = auto()
+    FAILED = auto()
+    NOT_SUPPORTED = auto()
+
 
 with open("version.json") as version_file:
     BUILDINFO = json.load(version_file)  # Load buildinfo with branchName, headCommitId and version label
     BUILDINFO['pythonVersion'] = sys.version  # Augment with python runtime version
 
-REQSTORE_URL = os.getenv("REQSTORE_URL", "managerui:9090")
-SERVING_URL = os.getenv("SERVING_URL", "managerui:9090")
+DEBUG_ENV = bool(os.getenv("DEBUG", True))
 
-MONGO_URL = os.getenv("MONGO_URL", "mongodb")
-MONGO_PORT = int(os.getenv("MONGO_PORT", 27017))
-MONGO_AUTH_DB = os.getenv("MONGO_AUTH_DB", "admin")
+HS_CLUSTER_ADDRESS = os.getenv("HTTP_UI_ADDRESS")
+MONITORING_URL = f"{HS_CLUSTER_ADDRESS}/monitoring"
+
+GRPC_ADDRESS = os.getenv("GRPC_UI_ADDRESS")
+
+S3_ENDPOINT = os.getenv("S3_ENDPOINT")
+
+MONGO_URL = os.getenv("MONGO_URL")
+MONGO_PORT = int(os.getenv("MONGO_PORT"))
+
+MONGO_AUTH_DB = os.getenv("MONGO_AUTH_DB")
 MONGO_USER = os.getenv("MONGO_USER")
 MONGO_PASS = os.getenv("MONGO_PASS")
 
-with open("./root_cause_request_json_schema.json") as f:
+with open("json_schemas/explanation_request.json") as f:
     REQUEST_JSON_SCHEMA = json.load(f)
     validator = Draft7Validator(REQUEST_JSON_SCHEMA)
 
@@ -44,11 +61,9 @@ def get_mongo_client():
 
 
 mongo_client = get_mongo_client()
-
 db = mongo_client['root_cause']
 
-hs_client = HydroServingClient(SERVING_URL)
-rs_client = reqstore_client.ReqstoreClient(REQSTORE_URL, insecure=True)
+hs_cluster = Cluster(HS_CLUSTER_ADDRESS)
 
 app = Flask(__name__)
 
@@ -57,18 +72,23 @@ CORS(app, expose_headers=['location'])
 connection_string = f"mongodb://{MONGO_URL}:{MONGO_PORT}"
 if MONGO_USER is not None and MONGO_PASS is not None:
     connection_string = f"mongodb://{MONGO_USER}:{MONGO_PASS}@{MONGO_URL}:{MONGO_PORT}"
+
 app.config['CELERY_BROKER_URL'] = f"{connection_string}/celery_broker?authSource={MONGO_AUTH_DB}"
 app.config['CELERY_RESULT_BACKEND'] = f"{connection_string}/celery_backend?authSource={MONGO_AUTH_DB}"
 
 celery = Celery(app.name,
                 broker=app.config['CELERY_BROKER_URL'],
                 backend=app.config['CELERY_RESULT_BACKEND'])
+
 celery.autodiscover_tasks(["rise_tasks", "anchor_tasks"], force=True)
 celery.conf.update(app.config)
 celery.conf.update({"CELERY_DISABLE_RATE_LIMITS": True})
 
+import utils
 import anchor_tasks
 import rise_tasks
+
+TASKS = {"anchor": anchor_tasks.tasks.anchor_task}
 
 
 @app.route("/", methods=['GET'])
@@ -81,138 +101,138 @@ def buildinfo():
     return jsonify(BUILDINFO)
 
 
-@app.route("/status", methods=['GET'])
-def get_instance_status():
-    possible_args = {"model_name", "model_version", "uid", "ts"}
+@app.route('/task_status', methods=["GET"])
+def get_celery_task_status():
+    possible_args = {"method", "task_id"}
     if set(request.args.keys()) != possible_args:
         return jsonify({"message": f"Expected args: {possible_args}. Provided args: {set(request.args.keys())}"}), 400
 
-    try:
-        model_name = request.args.get('model_name')
-        model_version = int(request.args.get('model_version'))
-        uid = int(request.args.get('uid'))
-        timestamp = int(request.args.get('ts'))
-    except Exception as e:
-        return jsonify({"message": f"Was unable to cast one of {('model_version', 'uid', 'ts')} to int"}), 400
+    method = request.args['method']
+    task_id = request.args['task_id']
 
-    try:
-        model = hs_client.get_model(model_name, model_version)
-    except ValueError as e:
-        return jsonify({"message": f"Unable to found {model_name}v{model_version}"}), 404
-
-    supported_endpoints = utils.get_supported_endpoints(model.contract)
-    logger.debug(f"Supported endpoints {supported_endpoints}")
-
-    try:
-        rootcause_methods_statuses = []
-        for method in supported_endpoints:
-            response = {"method": method}
-            instance_doc = db[method].find_one({"explained_instance.uid": {"$eq": uid},
-                                                "explained_instance.timestamp": {"$eq": timestamp},
-                                                "model.name": {"$eq": model_name},
-                                                "model.version": {"$eq": model_version}})
-            if instance_doc is None:
-                response['status'] = {"state": "NOT_QUEUED"}
-            else:
-                task_id = instance_doc['celery_task_id']
-                response['status'] = get_task_status(method=method, task_id=task_id).get_json()
-            rootcause_methods_statuses.append(response)
-    except Exception as e:
-        return jsonify({"message": f"{str(e)}"}), 500
-
-    return jsonify(rootcause_methods_statuses)
-
-
-@app.route("/supported_methods", methods=['GET'])
-def get_supported_methods():
-    req_json = request.get_json()
-    model_name = req_json['model']['name']
-    model_version = req_json['model']['version']
-    model = hs_client.get_model(model_name, model_version)
-    supported_endpoints = utils.get_supported_endpoints(model.contract)
-    return jsonify({"supported_methods": supported_endpoints})
-
-
-@app.route('/task_status/<method>/<task_id>', methods=["GET"])
-def get_task_status(method, task_id):
-    avaiable_methods = ['rise', 'anchor']
-    if method == "rise":
-        task = rise_tasks.tasks.rise_task.AsyncResult(task_id)
-    elif method == "anchor":
-        task = anchor_tasks.tasks.anchor_task.AsyncResult(task_id)
-    else:
-        raise ValueError("Invalid method - expected [{}], got".format(avaiable_methods, method))
+    task = TASKS[method].AsyncResult(task_id)
 
     response = {
         'state': task.state,
         'task_id': task_id
     }
-
-    if task.state == 'PENDING':
-        # job did not start yet, do nothing
-        pass
-    elif task.state == 'SUCCESS':
-        # job completed, return url to result
-        response['result'] = str(task.result)
-
-    elif task.state == "STARTED":
-        # job is in progress, return progress
-        response['progress'] = task.info['progress']
-    else:
-        # something went wrong in the background job, return the exception raised
-        response['description'] = str(task.info)
-
     return jsonify(response)
 
 
-@app.route('/fetch_result/<method>/<result_id>', methods=["GET"])
-def fetch_result(result_id, method):
-    explanation = db[method].find_one({"_id": objectid.ObjectId(result_id)})
-    del explanation['_id']
+@app.route('/explanation', methods=["GET"])
+def get_explanation_status():
+    possible_args = {"model_version_id", "explained_request_id", "method"}
+    if set(request.args.keys()) != possible_args:
+        return jsonify({"message": f"Expected args: {possible_args}. Provided args: {set(request.args.keys())}"}), 400
 
-    return jsonify(explanation)
+    method = request.args['method']
+    request_id = request.args['explained_request_id']
+    model_version_id = int(request.args['model_version_id'])
+
+    model_supported, support_description = utils.check_model_version_support(db, method, model_version_id)
+    if not model_supported:
+        return jsonify({"state": ExplanationState.NOT_SUPPORTED.name,
+                        "description": support_description})
+
+    # TODO check task state - if it is "FAILED", and state in mongodb is not - discard mongodb state and description, and return FAILED
+    explanation = db[method].find_one({"model_version_id": model_version_id, "explained_request_id": request_id})
+    if explanation:
+        response = {"state": explanation['state'],
+                    "description": explanation['description']}
+        if 'result' in explanation:
+            response['result'] = explanation['result']
+        return jsonify(response)
+    else:
+        return jsonify({"state": ExplanationState.NOT_CALLED.name,
+                        "description": "Explanation was never requested"})
 
 
-@app.route("/anchor", methods=['POST'])
-def anchor():
+@app.route("/explanation", methods=["POST"])
+def calculate_new_explanation():
     inp_json = request.get_json()
+
     if not validator.is_valid(inp_json):
-        error_message = "\n".join(validator.iter_errors(inp_json))
+        error_message = "\n".join([e.message for e in validator.iter_errors(inp_json)])
         return jsonify({"message": error_message}), 400
 
-    logger.info(f"Received request to explain {str(inp_json['model'])} with anchor")
+    model_version_id = inp_json['model_version_id']
+    explained_request_id = inp_json['explained_request_id']
+    method = inp_json['method']
 
-    inp_json['created_at'] = datetime.datetime.now()
+    has_training_data = len(requests.get(f"{MONITORING_URL}/training_data?modelVersionId={model_version_id}").json()) > 0
+    model_supported, support_description = utils.check_model_version_support(db, method, model_version_id)
+    if not model_supported:
+        return jsonify({"state": ExplanationState.NOT_SUPPORTED.name,
+                        "description": support_description})
 
-    anchor_explanation_id = db.anchor.insert_one(inp_json).inserted_id
-    task = anchor_tasks.tasks.anchor_task.delay(str(anchor_explanation_id))
+    if method == "anchor":
+        task = anchor_tasks.tasks.anchor_task
+    elif method == "rise":
+        task = rise_tasks.tasks.rise_task
+    else:
+        return 400, f"Invalid method: '{method}'"
 
-    explanation_id = objectid.ObjectId(anchor_explanation_id)
-    db.anchor.find_one_and_update({"_id": explanation_id},
-                                  {"$set": {"celery_task_id": task.id}})
+    logging.info(f"Received request to explain request={explained_request_id} of model {model_version_id} with {method}")
 
-    return jsonify({}), 202, {'Location': '/rootcause' + url_for('get_task_status', task_id=task.id, _external=False, method="anchor")}
+    # Check for existing explanations requests for this method, model and request.
+    explanation = db[method].find_one({"model_version_id": model_version_id,
+                                       "explained_request_id": explained_request_id},
+                                      sort=[("_id", pymongo.DESCENDING)])
+    if explanation:
+        logging.info(f"Found existing request for {method} explanation for {model_version_id} - {explained_request_id}")
+        response = {"state": explanation['state'],
+                    "description": explanation['description']}
+        if 'result' in explanation:
+            response['result'] = explanation['result']
+        return jsonify(response)
+
+    explanation_job_description = {'created_at': datetime.datetime.now(),
+                                   'model_version_id': model_version_id,
+                                   'explained_request_id': explained_request_id,
+                                   "state": ExplanationState.PENDING.name,
+                                   "description": "Received explanation request",
+                                   'method': method}
+
+    explanation_id = db[method].insert_one(explanation_job_description).inserted_id
+    logging.info(f"Stored request into mongodb for {method} explanation for {model_version_id} - {explained_request_id}")
+
+    task_async_result = task.delay(str(explanation_id))
+
+    explanation_id = objectid.ObjectId(explanation_id)
+    db[method].find_one_and_update({"_id": explanation_id},
+                                   {"$set": {"celery_task_id": task_async_result.id,
+                                             "description": "Explanation is queued"}})
+
+    return jsonify({}), 202
 
 
-@app.route("/rise", methods=['POST'])
-def rise():
-    inp_json = request.get_json()
-    if not validator.is_valid(inp_json):
-        error_message = "\n".join(validator.iter_errors(inp_json))
-        return jsonify({"message": error_message}), 400
+@app.route("/config", methods=['GET', 'PATCH'])
+def get_params():
+    possible_args = {"model_version_id", "method"}
+    if set(request.args.keys()) != possible_args:
+        return jsonify({"message": f"Expected args: {possible_args}. Provided args: {set(request.args.keys())}"}), 400
 
-    inp_json['created_at'] = datetime.datetime.now()
+    method = request.args['method']
+    model_version_id = int(request.args['model_version_id'])
 
-    logger.info(f"Received request to explain {str(inp_json['model'])} with rise")
+    current_config = utils.get_latest_config(db, method, model_version_id)
 
-    rise_explanation_id = db.rise.insert_one(inp_json).inserted_id
-    task = rise_tasks.tasks.rise_task.delay(str(rise_explanation_id))
+    if request.method == 'GET':
+        return jsonify(current_config)
+    elif request.method == "PATCH":
+        inp_json = request.get_json()
 
-    explanation_id = objectid.ObjectId(rise_explanation_id)
-    db.rise.find_one_and_update({"_id": explanation_id},
-                                {"$set": {"celery_task_id": task.id}})
+        # Patch current config with new values from inp_json
+        new_config = {**current_config, **inp_json['config']}
 
-    return jsonify({}), 202, {'Location': '/rootcause' + url_for('get_task_status', _external=False, task_id=task.id, method="rise")}
+        # Save patched version of config
+        db["config"].insert_one({"method": method,
+                                 'created_at': datetime.datetime.now(),
+                                 "config": new_config,
+                                 "model_version_id": model_version_id})
+        return Response(status=200)
+    else:
+        return Response(status=405)
 
 
 if __name__ == "__main__":
