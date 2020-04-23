@@ -196,8 +196,7 @@ def calculate_new_explanation():
     explanation_id = db[method].insert_one(explanation_job_description).inserted_id
     logging.info(f"Stored request into mongodb for {method} explanation for {model_version_id} - {explained_request_id}")
 
-    task_async_result = task.delay(str(explanation_id),
-                                   queue='rootcause')
+    task_async_result = task.apply_async(args=(str(explanation_id),), queue='rootcause')
 
     explanation_id = objectid.ObjectId(explanation_id)
     db[method].find_one_and_update({"_id": explanation_id},
