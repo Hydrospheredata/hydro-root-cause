@@ -24,6 +24,7 @@ COPY anchor2/ /app/anchor2
 COPY rise/ /app/rise
 
 RUN pip3 install anchor2/ rise/
+RUN printf '{"version":"%s", "gitHeadCommit":"%s","gitCurrentBranch":"%s", "pythonVersion":"%s"}\n' "$(cat version)" "$(git rev-parse HEAD)" "$(git rev-parse --abbrev-ref HEAD)" "$(python --version)" >> buildinfo.json
 
 COPY . /app
 EXPOSE 5000

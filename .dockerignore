@@ -5,3 +5,4 @@ examples
 hs_demos
 demos
 .git
+buildinfo.json
