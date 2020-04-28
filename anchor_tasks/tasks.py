@@ -135,8 +135,11 @@ def anchor_task(explanation_id: str):
         logger.info(f"{explanation_id} - started fetching training data, url: {s3_training_data_path}")
         started_downloading_data_time = timer()
 
-        s3 = S3FileSystem(client_kwargs={'endpoint_url': S3_ENDPOINT})
-        training_data = pd.read_csv(s3.open(s3_training_data_path, mode='rb'))
+        if S3_ENDPOINT:
+            s3 = S3FileSystem(client_kwargs={'endpoint_url': S3_ENDPOINT})
+            training_data = pd.read_csv(s3.open(s3_training_data_path, mode='rb'))
+        else:
+            training_data = pd.read_csv(s3_training_data_path)
 
         logger.info(f"{explanation_id} - finished loading training data in {timer() - started_downloading_data_time:.2f} seconds")
 
