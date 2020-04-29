@@ -2,7 +2,6 @@ import datetime
 import json
 import logging
 import os
-import sys
 from enum import Enum, auto
 from logging.config import fileConfig
 
@@ -29,9 +28,8 @@ class ExplanationState(Enum):
     NOT_SUPPORTED = auto()
 
 
-with open("version.json") as version_file:
-    BUILDINFO = json.load(version_file)  # Load buildinfo with branchName, headCommitId and version label
-    BUILDINFO['pythonVersion'] = sys.version  # Augment with python runtime version
+with open("buildinfo.json") as buildinfo_file:
+    BUILDINFO = json.load(buildinfo_file)
 
 DEBUG_ENV = bool(os.getenv("DEBUG", True))
 
@@ -90,18 +88,20 @@ import rise_tasks
 
 TASKS = {"anchor": anchor_tasks.tasks.anchor_task}
 
+ROUTES_PREFIX = "/rootcause"
 
-@app.route("/", methods=['GET'])
+
+@app.route(ROUTES_PREFIX + "/healthcheck", methods=['GET'])
 def hello():
     return "Hi! I am RootCause Service"
 
 
-@app.route("/buildinfo", methods=['GET'])
+@app.route(ROUTES_PREFIX + "/buildinfo", methods=['GET'])
 def buildinfo():
     return jsonify(BUILDINFO)
 
 
-@app.route('/task_status', methods=["GET"])
+@app.route(ROUTES_PREFIX + '/task_status', methods=["GET"])
 def get_celery_task_status():
     possible_args = {"method", "task_id"}
     if set(request.args.keys()) != possible_args:
@@ -119,7 +119,7 @@ def get_celery_task_status():
     return jsonify(response)
 
 
-@app.route('/explanation', methods=["GET"])
+@app.route(ROUTES_PREFIX + '/explanation', methods=["GET"])
 def get_explanation_status():
     possible_args = {"model_version_id", "explained_request_id", "method"}
     if set(request.args.keys()) != possible_args:
@@ -147,7 +147,7 @@ def get_explanation_status():
                         "description": "Explanation was never requested"})
 
 
-@app.route("/explanation", methods=["POST"])
+@app.route(ROUTES_PREFIX + "/explanation", methods=["POST"])
 def calculate_new_explanation():
     inp_json = request.get_json()
 
@@ -206,7 +206,7 @@ def calculate_new_explanation():
     return jsonify({}), 202
 
 
-@app.route("/config", methods=['GET', 'PATCH'])
+@app.route(ROUTES_PREFIX + "/config", methods=['GET', 'PATCH'])
 def get_params():
     possible_args = {"model_version_id", "method"}
     if set(request.args.keys()) != possible_args:
