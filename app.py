@@ -6,7 +6,6 @@ from enum import Enum, auto
 from logging.config import fileConfig
 
 import pymongo
-import requests
 from bson import objectid
 from celery import Celery
 from flask import Flask, request, jsonify, Response
@@ -129,10 +128,14 @@ def get_explanation_status():
     request_id = request.args['explained_request_id']
     model_version_id = int(request.args['model_version_id'])
 
-    model_supported, support_description = utils.check_model_version_support(db, method, model_version_id)
-    if not model_supported:
-        return jsonify({"state": ExplanationState.NOT_SUPPORTED.name,
-                        "description": support_description})
+    try:
+        model_supported, support_description = utils.check_model_version_support(db, method, model_version_id)
+        if not model_supported:
+            return jsonify({"state": ExplanationState.NOT_SUPPORTED.name,
+                            "description": support_description})
+    except Exception as e:
+        logging.error(f"Failed during model support analysis. {e}")
+        return 500, f"Failed during model support analysis."
 
     # TODO check task state - if it is "FAILED", and state in mongodb is not - discard mongodb state and description, and return FAILED
     explanation = db[method].find_one({"model_version_id": model_version_id, "explained_request_id": request_id})
@@ -159,11 +162,14 @@ def calculate_new_explanation():
     explained_request_id = inp_json['explained_request_id']
     method = inp_json['method']
 
-    has_training_data = len(requests.get(f"{MONITORING_URL}/training_data?modelVersionId={model_version_id}").json()) > 0
-    model_supported, support_description = utils.check_model_version_support(db, method, model_version_id)
-    if not model_supported:
-        return jsonify({"state": ExplanationState.NOT_SUPPORTED.name,
-                        "description": support_description})
+    try:
+        model_supported, support_description = utils.check_model_version_support(db, method, model_version_id)
+        if not model_supported:
+            return jsonify({"state": ExplanationState.NOT_SUPPORTED.name,
+                            "description": support_description})
+    except Exception as e:
+        logging.error(f"Failed during model support analysis. {e}")
+        return 500, f"Failed during model support analysis."
 
     if method == "anchor":
         task = anchor_tasks.tasks.anchor_task
@@ -215,7 +221,11 @@ def get_params():
     method = request.args['method']
     model_version_id = int(request.args['model_version_id'])
 
-    current_config = utils.get_latest_config(db, method, model_version_id)
+    try:
+        current_config = utils.get_latest_config(db, method, model_version_id)
+    except Exception as e:
+        logging.error(f"Failed during fetching rootcause configuration. {e}")
+        return 500, f'Failed during fetching rootcause configuration.'
 
     if request.method == 'GET':
         return jsonify(current_config)
