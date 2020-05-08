@@ -18,7 +18,7 @@ from pymongo.database import Database
 from s3fs.core import S3FileSystem
 
 import utils
-from app import celery, get_mongo_client, MONITORING_URL, ExplanationState, S3_ENDPOINT, HS_CLUSTER_ADDRESS
+from app import celery, get_mongo_client, MONITORING_URL, ExplanationState, S3_ENDPOINT, HS_CLUSTER_ADDRESS, GRPC_ADDRESS
 
 BEAM_SELECTOR_PARAMETER_NAMES = ("delta", 'tolerance', 'batch_size', 'beam_size', "anchor_pool_size")
 
@@ -91,7 +91,7 @@ def anchor_task(explanation_id: str):
         return str(explanation_id)
 
     try:
-        hs_cluster = Cluster(HS_CLUSTER_ADDRESS, grpc_address="managerui:9090")
+        hs_cluster = Cluster(HS_CLUSTER_ADDRESS, grpc_address=GRPC_ADDRESS)
         model_version = Model.find_by_id(hs_cluster, model_version_id)
         input_field_names = [t.name for t in model_version.contract.predict.inputs]
         output_field_names = [t.name for t in model_version.contract.predict.outputs]

@@ -62,7 +62,6 @@ CORS(app, expose_headers=['location'])
 HS_CLUSTER_ADDRESS = os.getenv("HTTP_UI_ADDRESS")
 GRPC_ADDRESS = os.getenv("GRPC_UI_ADDRESS")
 MONITORING_URL = f"{HS_CLUSTER_ADDRESS}/monitoring"
-# hs_cluster = Cluster(HS_CLUSTER_ADDRESS)
 hs_cluster = Cluster(HS_CLUSTER_ADDRESS)
 
 connection_string = f"mongodb://{MONGO_URL}:{MONGO_PORT}"
