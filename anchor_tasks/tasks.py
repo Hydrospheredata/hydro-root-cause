@@ -3,15 +3,14 @@ import logging as logger
 from timeit import default_timer as timer
 from typing import Callable
 
-import grpc
 import hydro_serving_grpc as hs_grpc
-import hydro_serving_grpc.gateway as hsg
 import numpy as np
 import pandas as pd
 import pymongo
 import requests
 from anchor2 import TabularExplainer
 from bson import objectid
+from hydrosdk.cluster import Cluster
 from hydrosdk.model import Model
 from hydrosdk.servable import Servable
 from pymongo import MongoClient
@@ -19,16 +18,13 @@ from pymongo.database import Database
 from s3fs.core import S3FileSystem
 
 import utils
-from app import celery, get_mongo_client, hs_cluster, MONITORING_URL, ExplanationState, S3_ENDPOINT, GRPC_ADDRESS
+from app import celery, get_mongo_client, MONITORING_URL, ExplanationState, S3_ENDPOINT, HS_CLUSTER_ADDRESS, GRPC_ADDRESS
 
 BEAM_SELECTOR_PARAMETER_NAMES = ("delta", 'tolerance', 'batch_size', 'beam_size', "anchor_pool_size")
 
 
 def get_anchor_classifier_fn(servable: Servable, feature_order, explained_tensor_name) -> Callable:
-    # channel = grpc.secure_channel(GRPC_ADDRESS, credentials=grpc.ssl_channel_credentials())
-    channel = grpc.insecure_channel(GRPC_ADDRESS)
-
-    stub = hsg.GatewayServiceStub(channel)
+    predictor = servable.predictor(monitorable=False)
 
     def classifier_fn(x: np.array):
 
@@ -36,21 +32,11 @@ def get_anchor_classifier_fn(servable: Servable, feature_order, explained_tensor
             x = x.reshape(1, -1)
 
         output_aggregator = []
-
         for row in x:
-            # FIXME[MVP] use correct input dtypes, do not cast everything to int right now
-            _x_df = pd.DataFrame(row.reshape((1, -1)), columns=feature_order).astype(int)
-
-            _x_proto = dict([(name, hs_grpc.TensorProto(dtype=hs_grpc.DT_INT64,
-                                                        int64_val=value.to_list(),
-                                                        tensor_shape=hs_grpc.TensorShapeProto())) for name, value in _x_df.iteritems()])
-
-            predict_request = hsg.ServablePredictRequest(servable_name=servable.name, data=_x_proto)
-
-            response = stub.ShadowlessPredictServable(predict_request)
-            decoded_response = dict([(tensor_name, tensor_proto.int64_val) for tensor_name, tensor_proto in response.outputs.items()])
-            output_aggregator.append([decoded_response[explained_tensor_name]])
-        return np.array(output_aggregator)
+            request = {feature_name: feature_value for feature_name, feature_value in zip(feature_order, row)}
+            response = predictor.predict(request)
+            output_aggregator.append(response[explained_tensor_name])
+        return np.array(output_aggregator).reshape(-1, 1)
 
     return classifier_fn
 
@@ -105,6 +91,7 @@ def anchor_task(explanation_id: str):
         return str(explanation_id)
 
     try:
+        hs_cluster = Cluster(HS_CLUSTER_ADDRESS, grpc_address=GRPC_ADDRESS)
         model_version = Model.find_by_id(hs_cluster, model_version_id)
         input_field_names = [t.name for t in model_version.contract.predict.inputs]
         output_field_names = [t.name for t in model_version.contract.predict.outputs]
@@ -150,9 +137,8 @@ def anchor_task(explanation_id: str):
         return str(explanation_id)
 
     try:
-        channel = grpc.insecure_channel(GRPC_ADDRESS)
-        manager_stub = hs_grpc.manager.ManagerServiceStub(channel=channel)
 
+        manager_stub = hs_grpc.manager.ManagerServiceStub(channel=hs_cluster.channel)
         deploy_request = hs_grpc.manager.DeployServableRequest(version_id=model_version_id,
                                                                metadata={"created_by": "rootcause"})
 
@@ -162,7 +148,7 @@ def anchor_task(explanation_id: str):
         if servable.status != 3:
             raise ValueError(f"Invalid servable state came from GRPC stream - {servable.status}")
 
-        tmp_servable = Servable.get(hs_cluster, servable_name=servable.name)
+        tmp_servable = Servable.find(hs_cluster, servable_name=servable.name)
         # if tmp_servable.status is not ServableStatus.SERVING:
         #     raise ValueError(f"Invalid servable state (fetched by HTTP)- {servable_status}")
 
