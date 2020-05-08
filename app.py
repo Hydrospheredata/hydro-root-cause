@@ -5,6 +5,7 @@ import os
 from enum import Enum, auto
 from logging.config import fileConfig
 
+import grpc
 import pymongo
 from bson import objectid
 from celery import Celery
@@ -32,11 +33,6 @@ with open("buildinfo.json") as buildinfo_file:
 
 DEBUG_ENV = bool(os.getenv("DEBUG", True))
 
-HS_CLUSTER_ADDRESS = os.getenv("HTTP_UI_ADDRESS")
-MONITORING_URL = f"{HS_CLUSTER_ADDRESS}/monitoring"
-
-GRPC_ADDRESS = os.getenv("GRPC_UI_ADDRESS")
-
 S3_ENDPOINT = os.getenv("S3_ENDPOINT")
 
 MONGO_URL = os.getenv("MONGO_URL")
@@ -60,11 +56,14 @@ def get_mongo_client():
 mongo_client = get_mongo_client()
 db = mongo_client['root_cause']
 
-hs_cluster = Cluster(HS_CLUSTER_ADDRESS)
-
 app = Flask(__name__)
-
 CORS(app, expose_headers=['location'])
+
+HS_CLUSTER_ADDRESS = os.getenv("HTTP_UI_ADDRESS")
+GRPC_ADDRESS = os.getenv("GRPC_UI_ADDRESS")
+MONITORING_URL = f"{HS_CLUSTER_ADDRESS}/monitoring"
+# hs_cluster = Cluster(HS_CLUSTER_ADDRESS)
+hs_cluster = Cluster(HS_CLUSTER_ADDRESS)
 
 connection_string = f"mongodb://{MONGO_URL}:{MONGO_PORT}"
 if MONGO_USER is not None and MONGO_PASS is not None:
