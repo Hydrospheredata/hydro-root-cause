@@ -27,7 +27,7 @@ def get_anchor_classifier_fn(servable: Servable, feature_order, explained_tensor
     predictor = servable.predictor(monitorable=False)
 
     def classifier_fn(x: np.array):
-
+        x = x.astype("int")
         if len(x.shape) == 1:
             x = x.reshape(1, -1)
 
