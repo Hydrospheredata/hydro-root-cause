@@ -61,6 +61,8 @@ CORS(app, expose_headers=['location'])
 
 HS_CLUSTER_ADDRESS = os.getenv("HTTP_UI_ADDRESS")
 GRPC_ADDRESS = os.getenv("GRPC_UI_ADDRESS")
+GRPC_CREDENTIALS = grpc.ssl_channel_credentials() if os.getenv("GRPC_SECURE") else None
+
 MONITORING_URL = f"{HS_CLUSTER_ADDRESS}/monitoring"
 hs_cluster = Cluster(HS_CLUSTER_ADDRESS)
 
