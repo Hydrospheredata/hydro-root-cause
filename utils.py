@@ -1,8 +1,9 @@
 from typing import Tuple, Dict
 
 import requests
+from hydro_serving_grpc import DT_INT64, DT_INT32, DT_INT16, DT_INT8
 from hydro_serving_grpc.contract import ModelSignature
-from hydrosdk.model import Model
+from hydrosdk.model import Model, ExternalModel
 
 from app import hs_cluster, MONITORING_URL
 
@@ -64,6 +65,10 @@ def check_model_version_support(db, method, model_version_id) -> Tuple[bool, str
 
         model_config = get_latest_config(db, method, model_version_id)
         model_version = Model.find_by_id(hs_cluster, model_version_id)
+
+        if isinstance(model_version, ExternalModel):
+            return False, f"External Models are not supported"
+
         signature = model_version.contract.predict
         explained_output_field_name = model_config['explained_output_field_name']
 
@@ -80,8 +85,12 @@ def check_model_version_support(db, method, model_version_id) -> Tuple[bool, str
         input_tensor_shapes = [tuple(map(lambda dim: dim.size, input_tensor.shape.dim)) for input_tensor in signature.inputs]
         if not all([shape == tuple() for shape in input_tensor_shapes]):
             return False, "This signature has invalid type, only signatures with all scalar fields are supported right now"
-        else:
-            return True, "Everything is fine"
+
+        input_tensor_dtypes = [input_tensor.dtype for input_tensor in signature.inputs]
+        if not all([dtype in {DT_INT64, DT_INT32, DT_INT16, DT_INT8} for dtype in input_tensor_dtypes]):
+            return False, "This signature fields have invalid dtypes, only signatures with fields of int types are supported right now"
+
+        return True, "Everything is fine"
     else:
         # TODO check for rise compatibility
         return False, "rise is unavailable for now"
