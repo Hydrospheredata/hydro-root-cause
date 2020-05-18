@@ -32,6 +32,7 @@ with open("buildinfo.json") as buildinfo_file:
     BUILDINFO = json.load(buildinfo_file)
 
 DEBUG_ENV = bool(os.getenv("DEBUG", True))
+HTTP_PORT = int(os.getenv("HTTP_PORT", 5000))
 
 S3_ENDPOINT = os.getenv("S3_ENDPOINT")
 
@@ -245,6 +246,6 @@ def get_params():
 
 if __name__ == "__main__":
     if not DEBUG_ENV:
-        serve(app, host='0.0.0.0', port=5000)
+        serve(app, host='0.0.0.0', port=HTTP_PORT)
     else:
-        app.run(debug=True, host='0.0.0.0', port=5000)
+        app.run(debug=True, host='0.0.0.0', port=HTTP_PORT)
