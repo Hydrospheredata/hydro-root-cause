@@ -5,7 +5,6 @@ import os
 from enum import Enum, auto
 from logging.config import fileConfig
 
-import grpc
 import pymongo
 from bson import objectid
 from celery import Celery

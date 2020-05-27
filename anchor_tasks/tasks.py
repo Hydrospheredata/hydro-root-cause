@@ -11,7 +11,7 @@ import requests
 from anchor2 import TabularExplainer
 from bson import objectid
 from hydrosdk.cluster import Cluster
-from hydrosdk.model import Model
+from hydrosdk.modelversion import ModelVersion
 from hydrosdk.servable import Servable
 from pymongo import MongoClient
 from pymongo.database import Database
@@ -92,7 +92,7 @@ def anchor_task(explanation_id: str):
 
     try:
         hs_cluster = Cluster(HS_CLUSTER_ADDRESS, grpc_address=GRPC_ADDRESS)
-        model_version = Model.find_by_id(hs_cluster, model_version_id)
+        model_version = ModelVersion.find_by_id(hs_cluster, model_version_id)
         input_field_names = [t.name for t in model_version.contract.predict.inputs]
         output_field_names = [t.name for t in model_version.contract.predict.outputs]
         logger.info(f"{explanation_id} - Feature names used for calculating explanation: {input_field_names}")

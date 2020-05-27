@@ -3,7 +3,7 @@ from typing import Tuple, Dict
 import requests
 from hydro_serving_grpc import DT_INT64, DT_INT32, DT_INT16, DT_INT8
 from hydro_serving_grpc.contract import ModelSignature
-from hydrosdk.model import Model, ExternalModel
+from hydrosdk.modelversion import ModelVersion
 
 from app import hs_cluster, MONITORING_URL
 
@@ -64,9 +64,9 @@ def check_model_version_support(db, method, model_version_id) -> Tuple[bool, str
             return False, "Unable to explain model version without training data."
 
         model_config = get_latest_config(db, method, model_version_id)
-        model_version = Model.find_by_id(hs_cluster, model_version_id)
+        model_version = ModelVersion.find_by_id(hs_cluster, model_version_id)
 
-        if isinstance(model_version, ExternalModel):
+        if model_version.is_external:
             return False, f"External Models are not supported"
 
         signature = model_version.contract.predict
