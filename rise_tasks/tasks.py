@@ -5,7 +5,7 @@ import logging as logger
 import numpy as np
 import requests
 from bson import objectid
-from hydrosdk.model import Model
+from hydrosdk.modelversion import ModelVersion
 from hydrosdk.servable import Servable
 from pymongo import MongoClient
 from pymongo.database import Database
@@ -39,7 +39,7 @@ def rise_task(self, explanation_id: str):
     if not job_config:
         job_config = utils.get_default_config("rise")
 
-    model_version = Model.find_by_id(hs_cluster, model_version_id)
+    model_version = ModelVersion.find_by_id(hs_cluster, model_version_id)
     input_field_names = [t.name for t in model_version.contract.predict.inputs]
 
     # TODO in future pass input parameter to be explained as config?
