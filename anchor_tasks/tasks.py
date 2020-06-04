@@ -184,18 +184,22 @@ def anchor_task(explanation_id: str):
         # Remove temporary servable
         Servable.delete(hs_cluster, tmp_servable.name)
 
-    result_json = {"explanation": [str(p) for p in explanation.predicates],
-                   "coverage": explanation.coverage(),
-                   "precision": explanation.precision(),
-                   "explained_field_name": explained_tensor_name,
-                   "explained_field_value": explained_field_value}
+    try:
+        result_json = {"explanation": [str(p) for p in explanation.predicates],
+                       "coverage": explanation.coverage(),
+                       "precision": explanation.precision(),
+                       "explained_field_name": str(explained_tensor_name),
+                       "explained_field_value": int(explained_field_value)}
 
-    db.anchor.update_one({"_id": objectid.ObjectId(explanation_id)},
-                         {"$set": {'result': result_json,
-                                   "state": ExplanationState.SUCCESS.name,
-                                   "description": "Explanation successfully computed",
-                                   "completed_at": datetime.datetime.now()}})
+        db.anchor.update_one({"_id": objectid.ObjectId(explanation_id)},
+                             {"$set": {'result': result_json,
+                                       "state": ExplanationState.SUCCESS.name,
+                                       "description": "Explanation successfully computed",
+                                       "completed_at": datetime.datetime.now()}})
 
-    logger.info(f"{explanation_id} - Finished computing explanation.")
+        logger.info(f"{explanation_id} - Finished saving computed explanation.")
+    except Exception as e:
+        log_error_state(f"Error happened during saving explanation. {e}")
+        return str(explanation_id)
 
     return str(explanation_id)
