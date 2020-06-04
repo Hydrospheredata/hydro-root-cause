@@ -172,7 +172,7 @@ class BeamAnchorSearch(AnchorSelectionStrategy):
                          tolerance=0.35,
                          delta=0.25,
                          **kwargs
-                         ) -> TabularExplanation:
+                         ) -> Tuple[TabularExplanation, int]:
         """
         This function returns the first anchor which precision will be >= precision_threshold. Anchor selection process is an iterative
          process - first, the pool of anchors is created, then best anchors anchors from this pool take over the whole pool by copying
@@ -260,4 +260,4 @@ class BeamAnchorSearch(AnchorSelectionStrategy):
         best_anchor = satisfactory_anchors[metrics[:, 1].argmax()]
         logger.info("Best anchor: " + str(best_anchor))
 
-        return best_anchor
+        return best_anchor, target_label

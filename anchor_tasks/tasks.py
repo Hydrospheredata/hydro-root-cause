@@ -1,5 +1,6 @@
 import datetime
 import logging as logger
+from time import sleep
 from timeit import default_timer as timer
 from typing import Callable
 
@@ -148,7 +149,9 @@ def anchor_task(explanation_id: str):
         if servable.status != 3:
             raise ValueError(f"Invalid servable state came from GRPC stream - {servable.status}")
 
+        sleep(5)
         tmp_servable = Servable.find(hs_cluster, servable_name=servable.name)
+
         # if tmp_servable.status is not ServableStatus.SERVING:
         #     raise ValueError(f"Invalid servable state (fetched by HTTP)- {servable_status}")
 
@@ -167,12 +170,13 @@ def anchor_task(explanation_id: str):
 
         beam_selector_parameters = dict([(k, v) for k, v in job_config.items() if k in BEAM_SELECTOR_PARAMETER_NAMES])
 
-        explanation = anchor_explainer.explain(explained_request,
-                                               classifier_fn=get_anchor_classifier_fn(servable=tmp_servable,
-                                                                                      feature_order=list(training_data.columns),
-                                                                                      explained_tensor_name=explained_tensor_name),
-                                               threshold=job_config['threshold'],
-                                               selector_params=beam_selector_parameters)
+        explanation, explained_field_value = \
+            anchor_explainer.explain(x=explained_request,
+                                     classifier_fn=get_anchor_classifier_fn(servable=tmp_servable,
+                                                                            feature_order=list(training_data.columns),
+                                                                            explained_tensor_name=explained_tensor_name),
+                                     threshold=job_config['threshold'],
+                                     selector_params=beam_selector_parameters)
     except Exception as e:
         log_error_state(f"Error happened during iterating over possible explanations. {e}")
         return str(explanation_id)
@@ -182,7 +186,9 @@ def anchor_task(explanation_id: str):
 
     result_json = {"explanation": [str(p) for p in explanation.predicates],
                    "coverage": explanation.coverage(),
-                   "precision": explanation.precision()}
+                   "precision": explanation.precision(),
+                   "explained_field_name": explained_tensor_name,
+                   "explained_field_value": explained_field_value}
 
     db.anchor.update_one({"_id": objectid.ObjectId(explanation_id)},
                          {"$set": {'result': result_json,

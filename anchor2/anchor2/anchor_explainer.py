@@ -1,6 +1,6 @@
 import logging as logger
 from abc import ABC, abstractmethod
-from typing import Union, List, Dict
+from typing import Union, List, Dict, Tuple
 
 import numpy as np
 import pandas as pd
@@ -70,7 +70,7 @@ class TabularExplainer(AnchorExplainer):
                 strategy: str = "kl-lucb",
                 threshold=0.95,
                 selector_params: Dict = {},
-                verbose=True) -> TabularExplanation:
+                verbose=True) -> Tuple[TabularExplanation, int]:
 
         if strategy == 'kl-lucb':
             logger.info("Using Kullback-Leibler LUCB method")
@@ -82,20 +82,20 @@ class TabularExplainer(AnchorExplainer):
         else:
             raise ValueError("Strategy is not recognized, possible options are ['greedy', 'kl-lucb']")
 
-        explanation: TabularExplanation = selector.find_explanation(x=x,
-                                                                    data=self.data,
-                                                                    d_data=self.discretized_data,
-                                                                    classifier_fn=classifier_fn,
-                                                                    d_classifier_fn=lambda y: classifier_fn(
-                                                                        self.discretizer.inverse_transform(y)),
-                                                                    ordinal_idx=self.ordinal_features_idx,
-                                                                    feature_names=self.feature_names,
-                                                                    precision_threshold=threshold,
-                                                                    **selector_params
-                                                                    )
+        explanation, explained_value = selector.find_explanation(x=x,
+                                                                 data=self.data,
+                                                                 d_data=self.discretized_data,
+                                                                 classifier_fn=classifier_fn,
+                                                                 d_classifier_fn=lambda y: classifier_fn(
+                                                                     self.discretizer.inverse_transform(y)),
+                                                                 ordinal_idx=self.ordinal_features_idx,
+                                                                 feature_names=self.feature_names,
+                                                                 precision_threshold=threshold,
+                                                                 **selector_params
+                                                                 )
 
         # translator = ExplanationTranslator()
         # translator.fit(self.translators, self.ordinal_features_idx)
         # explanation.str = translator.transform(explanation)
 
-        return explanation
+        return explanation, explained_value
