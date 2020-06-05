@@ -226,7 +226,7 @@ def get_params():
         return 500, f'Failed during fetching rootcause configuration.'
 
     if request.method == 'GET':
-        return jsonify(current_config)
+        return jsonify({"config": current_config})
     elif request.method == "PATCH":
         inp_json = request.get_json()
 

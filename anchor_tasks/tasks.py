@@ -7,7 +7,6 @@ from typing import Callable
 import hydro_serving_grpc as hs_grpc
 import numpy as np
 import pandas as pd
-import pymongo
 import requests
 from anchor2 import TabularExplainer
 from bson import objectid
@@ -62,6 +61,7 @@ def anchor_task(explanation_id: str):
         db: Database = mongo_client['root_cause']
     except:
         logger.error("Failed to connect to Mongodb")
+        return explanation_id
 
     def log_error_state(error_msg):
         logger.error(error_msg)
@@ -78,15 +78,7 @@ def anchor_task(explanation_id: str):
     explained_request_id = job_json['explained_request_id']
 
     try:
-        # Fetch config for this model version. If no config provided - get default one
-        job_config = db.configs.find_one({"method": "anchor",
-                                          "model_version_id": model_version_id},
-                                         sort=[("_id", pymongo.DESCENDING)])
-        if not job_config:
-            job_config = utils.get_default_config("anchor")
-
-        if not job_config:
-            raise ValueError("job config is none")
+        job_config = utils.get_latest_config(db, "anchor", model_version_id)
     except Exception as e:
         log_error_state(f"Failed to load config for this job {e}")
         return str(explanation_id)

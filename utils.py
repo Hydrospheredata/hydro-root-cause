@@ -133,7 +133,7 @@ def get_default_config(method):
                 "ordinal_features_idx": [0, 11],
                 # "precision_threshold": 0.5,
                 "label_decoders": {},
-                "threshold": 0.8,
+                "threshold": 0.9,
                 "oh_encoded_categories": {},
                 "anchor_pool_size": 10,
                 "beam_size": 5,
