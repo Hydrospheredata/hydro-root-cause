@@ -27,14 +27,13 @@ ENV PYTHONUNBUFFERED=1
 COPY --chown=app:app requirements.txt requirements.txt
 RUN pip3 install --user -r requirements.txt
 
+COPY --chown=app:app . /app
 WORKDIR /app
-
-COPY --chown=app:app anchor2/ /app/anchor2
-COPY --chown=app:app rise/ /app/rise
+COPY --chown=app:app anchor2/ anchor2
+COPY --chown=app:app rise/ rise
 
 RUN pip3 install --user anchor2/ rise/
 
-COPY --chown=app:app . /app
 RUN printf '{"version":"%s", "gitHeadCommit":"%s","gitCurrentBranch":"%s", "pythonVersion":"%s"}\n' "$(cat version)" "$(git rev-parse HEAD)" "$(git rev-parse --abbrev-ref HEAD)" "$(python --version)" >> buildinfo.json && \
     rm -rf .git
 
