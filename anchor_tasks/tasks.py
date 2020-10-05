@@ -143,7 +143,8 @@ def anchor_task(explanation_id: str):
 
         sleep(5)
         tmp_servable = Servable.find(hs_cluster, servable_name=servable.name)
-
+        logger.info(f'{tmp_servable.name} was deployed. Sleeping for 15 sec')
+        sleep(15)
         # if tmp_servable.status is not ServableStatus.SERVING:
         #     raise ValueError(f"Invalid servable state (fetched by HTTP)- {servable_status}")
 
