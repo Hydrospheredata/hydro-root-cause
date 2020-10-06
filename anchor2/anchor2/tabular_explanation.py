@@ -114,10 +114,35 @@ class TabularExplanation(Explanation):
         e.g. df = 3 and df < 10 => df = 3
         :return:
         """
+        old_predicates = self.predicates.copy()
+
+        def validate_simplification():
+            predicate_contradictions = np.array(
+                [[old_predicate.is_contradictory_to(new_predicate) for old_predicate in old_predicates] for
+                 new_predicate in
+                 self.predicates])
+            contradictions_idx = np.argwhere(predicate_contradictions == True)
+            if len(contradictions_idx) == 0:
+                pass
+            else:
+                error_msg = ''
+                for contradiction_id in contradictions_idx:
+                    new_id = contradiction_id[0]
+                    old_id = contradiction_id[1]
+                    error_msg += f'\tNEW {self.predicates[new_id]} vs OLD {old_predicates[old_id]}\n'
+                error_msg = f'Validation of predicates simplification failed. Using unsimplified version. Predicates contradict:\n' \
+                            f'OLD PREDICATES:{" AND ".join([str(p) for p in old_predicates])}\n' \
+                            f'NEW PREDICATES:{" AND ".join([str(p) for p in self.predicates])}\n' \
+                            f'{"---" * 10}\n' \
+                            f'{error_msg}\n'
+                self.predicates = old_predicates
+                raise Warning(error_msg)
+
         for feature_id, feature_values in enumerate(self._feature_values):
 
             # If Equality predicate is present for this feature, remove all other predicates for this feature
-            eq_predicates = list(filter(lambda p: p.feature_id == feature_id and type(p) == EqualityPredicate, self.predicates))
+            eq_predicates = list(
+                filter(lambda p: p.feature_id == feature_id and type(p) == EqualityPredicate, self.predicates))
             if len(eq_predicates) == 1:
                 strongest_predicate = eq_predicates[0]
                 compressed_predicates = list(filter(lambda p: p.feature_id != feature_id or
@@ -129,22 +154,27 @@ class TabularExplanation(Explanation):
 
             # If multiple GEQ predicates are present for this feature,
             # remove all other predicates for this feature, but the strongest one
-            geq_predicates = list(filter(lambda p: p.feature_id == feature_id and type(p) == GreaterOrEqualPredicate, self.predicates))
+            geq_predicates = list(
+                filter(lambda p: p.feature_id == feature_id and type(p) == GreaterOrEqualPredicate, self.predicates))
             if len(geq_predicates) > 1:
                 strongest_predicate = max(geq_predicates, key=lambda p: p.value)
                 compressed_predicates = list(filter(lambda p: p.feature_id != feature_id or
-                                                              type(p) is LessPredicate or
+                                                              type(
+                                                                  p) is LessPredicate or  # or type(p) is InequalityPredicate
+                                                              type(p) is InequalityPredicate or
                                                               p is strongest_predicate,
                                                     self.predicates))
                 self.predicates = compressed_predicates
 
             # If multiple LE predicates are present for this feature,
             # remove all other predicates for this feature, but the strongest one
-            less_predicates = list(filter(lambda p: p.feature_id == feature_id and type(p) == LessPredicate, self.predicates))
+            less_predicates = list(
+                filter(lambda p: p.feature_id == feature_id and type(p) == LessPredicate, self.predicates))
             if len(less_predicates) > 1:
                 strongest_predicate = min(less_predicates, key=lambda p: p.value)
                 compressed_predicates = list(filter(lambda p: p.feature_id != feature_id or
                                                               type(p) is GreaterOrEqualPredicate or
+                                                              type(p) is InequalityPredicate or
                                                               p is strongest_predicate,
                                                     self.predicates))
                 self.predicates = compressed_predicates
@@ -152,39 +182,50 @@ class TabularExplanation(Explanation):
             # Fetch all inequality predicates, next fetch all geq predicates. It's guaranteed by previous code that we will fetch
             # 0 or 1 geq predicates. If any of inequality predicates has the same value as geq, meaning geq is not geq but ge, remove
             # both inequality predicate and geq predicate and replace them with single new geq and leq.
-            ineq_predicates = list(filter(lambda p: p.feature_id == feature_id and type(p) == InequalityPredicate, self.predicates))
-            geq_predicates = list(filter(lambda p: p.feature_id == feature_id and type(p) == GreaterOrEqualPredicate, self.predicates))
+            ineq_predicates = list(
+                filter(lambda p: p.feature_id == feature_id and type(p) == InequalityPredicate, self.predicates))
+            geq_predicates = list(
+                filter(lambda p: p.feature_id == feature_id and type(p) == GreaterOrEqualPredicate, self.predicates))
             if len(geq_predicates) == 1:
                 geq_value = geq_predicates[0].value
-                ineq_geq_interception = list(filter(lambda p: p.value == geq_value, ineq_predicates))
+                ineq_geq_interception = list(filter(lambda p: p.value == geq_value, ineq_predicates))  # handle less
                 if len(ineq_geq_interception) > 0:
                     compressed_predicates = list(filter(lambda p: p is not ineq_geq_interception[0] and
                                                                   p is not geq_predicates[0],
                                                         self.predicates))
-                    new_geq_predicate = geq_predicates[0].copy()
-                    new_geq_predicate.value += 1
+                    if geq_predicates[0].value < max(feature_values):  # handle edge case
+                        new_geq_predicate = geq_predicates[0].copy()
+                        new_geq_predicate.value += 1
+                        compressed_predicates.append(new_geq_predicate)
+                    self.predicates = compressed_predicates
 
-                    new_le_predicate = LessPredicate(value=ineq_geq_interception[0].value,
-                                                     feature_idx=ineq_geq_interception[0].feature_id,
-                                                     feature_name=ineq_geq_interception[0].feature_name)
-                    new_geq_predicate.value += 1
-
-                    compressed_predicates.append(new_geq_predicate)
-                    compressed_predicates.append(new_le_predicate)
+                # remove all ineq that are out of geq range
+                ineq_geq_less = list(filter(lambda p: p.value < geq_value, ineq_predicates))
+                if len(ineq_geq_less) > 0:
+                    compressed_predicates = list(filter(lambda p: p not in ineq_geq_less, self.predicates))
                     self.predicates = compressed_predicates
 
             # Symmetrical case as one before, but for le predicates.
             # Fetch all inequality predicates, next fetch all le predicates. It's guaranteed by previous code that we will fetch
             # 0 or 1 le predicates. If any of inequality predicates has the same value as le, meaning le is redundant, remove
             # le predicate
-            ineq_predicates = list(filter(lambda p: p.feature_id == feature_id and type(p) == InequalityPredicate, self.predicates))
-            le_predicates = list(filter(lambda p: p.feature_id == feature_id and type(p) == LessPredicate, self.predicates))
+            ineq_predicates = list(
+                filter(lambda p: p.feature_id == feature_id and type(p) == InequalityPredicate, self.predicates))
+            le_predicates = list(
+                filter(lambda p: p.feature_id == feature_id and type(p) == LessPredicate, self.predicates))
             if len(le_predicates) == 1:
                 le_value = le_predicates[0].value
                 ineq_le_interception = list(filter(lambda p: p.value == le_value, ineq_predicates))
                 if len(ineq_le_interception) > 0:
-                    compressed_predicates = list(filter(lambda p: p is not le_predicates[0], self.predicates))
+                    compressed_predicates = list(filter(lambda p: p is not ineq_le_interception,
+                                                        self.predicates))
                     self.predicates = compressed_predicates
+                ineq_le_greater = list(filter(lambda p: p.value > le_value, ineq_predicates))
+                # remove all ineq that are out of le range
+                if len(ineq_le_greater) > 0:
+                    compressed_predicates = list(filter(lambda p: p not in ineq_le_greater, self.predicates))
+                    self.predicates = compressed_predicates
+        validate_simplification()
 
     def get_possible_feature_values(self, feature_id):
         """
@@ -329,7 +370,7 @@ class LessPredicate(TabularPredicate):
         return x[self.feature_id] < self.value
 
     def check_against_column(self, x: np.array):
-        return x <= self.value
+        return x < self.value
 
     def is_contradictory_to(self, other) -> bool:
         if other.feature_id == self.feature_id:
