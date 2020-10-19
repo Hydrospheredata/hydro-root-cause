@@ -9,6 +9,9 @@
     "explained_request_id": {
       "type": "string"
     },
+    "explained_output_field_name": {
+      "type": "string"
+    },
     "model_version_id": {
       "type": "integer"
     },

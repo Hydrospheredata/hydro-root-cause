@@ -1,9 +1,13 @@
+import json
 from typing import Tuple, Dict
 
 import requests
+import sseclient
 from hydro_serving_grpc import DT_INT64, DT_INT32, DT_INT16, DT_INT8
 from hydro_serving_grpc.contract import ModelSignature
+from hydrosdk import Cluster
 from hydrosdk.modelversion import ModelVersion
+from hydrosdk.servable import Servable, ServableStatus
 
 from app import hs_cluster, MONITORING_URL
 
@@ -49,28 +53,28 @@ def contract_is_supported_by_rise(signature: ModelSignature, training_data_avail
     return True, "Everything is fine"
 
 
-def check_model_version_support(db, method, model_version_id) -> Tuple[bool, str]:
+def check_model_version_support(method, model_version_id, explained_output_field_name) -> Tuple[bool, str]:
     """
     Checks whether model version is supported by particular method. Requires access to latest config to see which fields are being explained
     :param db:
     :param method:
     :param model_version_id:
+    :param explained_output_field_name:
     :return:
     """
     if method == 'anchor':
-        has_training_data = len(requests.get(f"{MONITORING_URL}/training_data?modelVersionId={model_version_id}").json()) > 0
+        has_training_data = len(
+            requests.get(f"{MONITORING_URL}/training_data?modelVersionId={model_version_id}").json()) > 0
 
         if not has_training_data:
             return False, "Unable to explain model version without training data."
 
-        model_config = get_latest_config(db, method, model_version_id)
         model_version = ModelVersion.find_by_id(hs_cluster, model_version_id)
 
         if model_version.is_external:
             return False, f"External Models are not supported"
 
         signature = model_version.contract.predict
-        explained_output_field_name = model_config['explained_output_field_name']
 
         if explained_output_field_name in [tensor.name for tensor in signature.outputs]:
             classes_field = next(filter(lambda t: t.name == explained_output_field_name, signature.outputs))
@@ -82,7 +86,8 @@ def check_model_version_support(db, method, model_version_id) -> Tuple[bool, str
             return False, f"Explained tensor is '{explained_output_field_name}' and it is not present in signature." \
                           f" You can change explained tensor by calling config"
 
-        input_tensor_shapes = [tuple(map(lambda dim: dim.size, input_tensor.shape.dim)) for input_tensor in signature.inputs]
+        input_tensor_shapes = [tuple(map(lambda dim: dim.size, input_tensor.shape.dim)) for input_tensor in
+                               signature.inputs]
         if not all([shape == tuple() for shape in input_tensor_shapes]):
             return False, "This signature has invalid type, only signatures with all scalar fields are supported right now"
 
@@ -124,13 +129,10 @@ def get_default_config(method):
     if method == "rise":
         return {"number_of_masks": 100,
                 "mask_granularity": 100,
-                "mask_density": 100,
-                "explained_output_field_name": "probabilities"}
+                "mask_density": 100, }
     elif method == "anchor":
 
-        return {"explained_output_field_name": "classes",
-                "training_subsample_size": 10000,
-                "ordinal_features_idx": [0, 11],
+        return {"training_subsample_size": 10000,
                 # "precision_threshold": 0.5,
                 "label_decoders": {},
                 "threshold": 0.9,
@@ -142,3 +144,26 @@ def get_default_config(method):
                 "delta": 0.25}
     else:
         raise ValueError(f"Invalid method {method} passed")
+
+def servable_lock_till_serving(cluster: Cluster, servable_name: str, timeout_messages: int = 30) -> bool:
+    """ Wait for a servable to become SERVING """
+    events_stream = cluster.request("GET", "/api/v2/events", stream=True)
+    events_client = sseclient.SSEClient(events_stream)
+    status = Servable.find_by_name(cluster, servable_name).status
+    if not status is ServableStatus.STARTING and \
+            ServableStatus.SERVING:
+        return None
+    try:
+        for event in events_client.events():
+            timeout_messages -= 1
+            if timeout_messages < 0:
+                raise ValueError
+            if event.event == "ServableUpdate":
+                data = json.loads(event.data)
+                if data.get("fullName") == servable_name:
+                    status = ServableStatus.from_camel_case(data.get("status", {}).get("status"))
+                    if status is ServableStatus.SERVING:
+                        return None
+                    raise ValueError
+    finally:
+        events_client.close()

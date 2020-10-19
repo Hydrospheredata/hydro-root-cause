@@ -13,6 +13,7 @@ from bson import objectid
 from hydrosdk.cluster import Cluster
 from hydrosdk.modelversion import ModelVersion
 from hydrosdk.servable import Servable, ServableStatus
+from hydrosdk.contract import ProfilingType
 from pymongo import MongoClient
 from pymongo.database import Database
 from s3fs.core import S3FileSystem
@@ -77,6 +78,7 @@ def anchor_task(explanation_id: str):
 
     model_version_id = int(job_json['model_version_id'])
     explained_request_id = job_json['explained_request_id']
+    logger.info(job_json)
 
     try:
         job_config = utils.get_latest_config(db, "anchor", model_version_id)
@@ -89,13 +91,14 @@ def anchor_task(explanation_id: str):
         model_version = ModelVersion.find_by_id(hs_cluster, model_version_id)
         input_field_names = [t.name for t in model_version.contract.predict.inputs]
         output_field_names = [t.name for t in model_version.contract.predict.outputs]
-        logger.info(f"{explanation_id} - Feature names used for calculating explanation: {input_field_names}")
+        ordinal_features_idx = [idx for idx, inpt in enumerate(model_version.contract.predict.inputs) if ProfilingType(inpt.profile) == ProfilingType.ORDINAL]
+        logger.info(f"{explanation_id} - Feature names used for calculating explanation: {input_field_names}.")
     except Exception as e:
         log_error_state(f"Failed to connect to the model. {e}")
         return str(explanation_id)
 
     try:
-        explained_tensor_name = job_config['explained_output_field_name']
+        explained_tensor_name = job_json['explained_output_field_name']  # Fix here
         if explained_tensor_name not in output_field_names:
             raise ValueError(f"RootCause is configure to explain '{explained_tensor_name}' tensor. "
                              f"{model_version.name}v{model_version.version} have to return '{explained_tensor_name}' tensor.")
@@ -134,11 +137,11 @@ def anchor_task(explanation_id: str):
 
     try:
 
-        tmp_servable = Servable.create(hs_cluster, model_name=model_version.name, version=model_version.version,
+        tmp_servable: Servable = Servable.create(hs_cluster, model_name=model_version.name, version=model_version.version,
                                        metadata={"created_by": "rootcause"})
 
-        servable_lock_till_serving(hs_cluster, tmp_servable.name)
-        tmp_servable = Servable.find_by_name(hs_cluster, tmp_servable.name)
+        utils.servable_lock_till_serving(hs_cluster, tmp_servable.name)
+        tmp_servable: Servable = Servable.find_by_name(hs_cluster, tmp_servable.name)
 
 
     except Exception as e:
@@ -148,7 +151,7 @@ def anchor_task(explanation_id: str):
     try:
         anchor_explainer = TabularExplainer()
         anchor_explainer.fit(data=training_data,
-                             ordinal_features_idx=job_config['ordinal_features_idx'],
+                             ordinal_features_idx=ordinal_features_idx,
                              label_decoders=job_config['label_decoders'],
                              oh_encoded_categories=job_config['oh_encoded_categories'])
 
@@ -191,25 +194,3 @@ def anchor_task(explanation_id: str):
     return str(explanation_id)
 
 
-def servable_lock_till_serving(cluster: Cluster, servable_name: str, timeout_messages: int = 30) -> bool:
-    """ Wait for a servable to become SERVING """
-    events_stream = cluster.request("GET", "/api/v2/events", stream=True)
-    events_client = sseclient.SSEClient(events_stream)
-    status = Servable.find_by_name(cluster, servable_name).status
-    if not status is ServableStatus.STARTING and \
-            ServableStatus.SERVING:
-        return None
-    try:
-        for event in events_client.events():
-            timeout_messages -= 1
-            if timeout_messages < 0:
-                raise ValueError
-            if event.event == "ServableUpdate":
-                data = json.loads(event.data)
-                if data.get("fullName") == servable_name:
-                    status = ServableStatus.from_camel_case(data.get("status", {}).get("status"))
-                    if status is ServableStatus.SERVING:
-                        return None
-                    raise ValueError
-    finally:
-        events_client.close()

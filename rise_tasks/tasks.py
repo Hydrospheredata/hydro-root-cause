@@ -46,19 +46,21 @@ def rise_task(self, explanation_id: str):
     input_image: np.ndarray = get_rise_explained_instance(request_id, input_field_names[0])
 
     # Create temporary servable
-    temp_servable_copy: Servable = Servable.create(hs_cluster, model_version.name, model_version.version)
-    logger.info(f"{explanation_id} - created servable {temp_servable_copy.name}")
-    asyncio.sleep(5)  # TODO Add check for servable status
+    tmp_servable: Servable = Servable.create(hs_cluster, model_name=model_version.name, version=model_version.version,
+                                   metadata={"created_by": "rootcause"})
+    logger.info(f"{explanation_id} - created servable {tmp_servable.name}")
+    utils.servable_lock_till_serving(hs_cluster, tmp_servable.name)
+    tmp_servable = Servable.find_by_name(hs_cluster, tmp_servable.name)
 
     predictor = None  # TODO get_temp_servable_copy_predictor
 
-    explained_image_probas = predictor.predict(input_image)[job_config['explained_output_field_name']][0]  # Reduce batch dim
+    explained_image_probas = predictor.predict(input_image)[job_json['explained_output_field_name']][0]  # Reduce batch dim
 
     # Return only top 10 classes as a result, to reduce response size
     top_10_classes = explained_image_probas.argsort()[::-1][:10]
     top_10_probas = explained_image_probas[top_10_classes]
 
-    input_shape = tuple(map(lambda dim: dim.size, temp_servable_copy.model.contract.predict.inputs[0].shape.dim))
+    input_shape = tuple(map(lambda dim: dim.size, tmp_servable.model.contract.predict.inputs[0].shape.dim))
     input_shape = input_shape[1:]  # Remove 0 dimension as batch dim, FIXME tech debt, support for single data point in future?
 
     if len(input_shape) == 2:
@@ -77,7 +79,7 @@ def rise_task(self, explanation_id: str):
     rise_explainer = RiseImageExplainer()
 
     def classifier_fn(x):
-        return predictor.predict(x)[job_config['explained_output_field_name']]
+        return predictor.predict(x)[job_json['explained_output_field_name']]
 
     rise_explainer.fit(prediction_fn=classifier_fn,
                        input_size=job_config['input_size'],
@@ -105,6 +107,6 @@ def rise_task(self, explanation_id: str):
 
     logger.info(f"{explanation_id} - finished task for {model_version} {request_id}")
 
-    Servable.delete(hs_cluster, temp_servable_copy.name)
+    Servable.delete(hs_cluster, tmp_servable.name)
 
     return str(explanation_id)
