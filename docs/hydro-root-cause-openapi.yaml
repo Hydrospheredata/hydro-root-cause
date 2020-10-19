@@ -71,6 +71,12 @@ paths:
           required: true
           schema:
             type: string
+        - name: explained_output_field_name
+          in: query
+          description: Name of the tensor from model signature which will be used as an explanation target during explanation calculation process. Tensor should represent predicted class or class id is required to be integer of shape (-1, 1).
+          required: True
+          schema:
+            type: string
         - name: method
           in: query
           required: true
@@ -186,6 +192,9 @@ components:
         explained_request_id:
           description: Unique ID of a saved request
           type: string
+        explained_output_field_name:
+          description: Name of the tensor from model signature which will be used as an explanation target during explanation calculation process. Tensor should represent predicted class or class id is required to be integer of shape (-1, 1).
+          type: string
         method:
           description: One of the avaialable methods for interpretability
           type: string
@@ -249,10 +258,6 @@ components:
           exclusiveMaximum: True
           minimum: 0
           maximum: 1
-        explained_output_field_name:
-          description: Name of the tensor from model signature which will be used as an explained target during explanation calculation process. Tensor should represent probabilities per each class and is required to be float in range [0; 1] and to be of shape (-1, number_of_classes).
-          type: string
-          default: 'probabilities'
     AnchorConfig:
       type: object
       properties:
@@ -305,10 +310,6 @@ components:
           minimum: 0
           maximum: 1
           default: 0.25
-        explained_output_field_name:
-          description: Name of the tensor from model signature which will be used as an explanation target during explanation calculation process. Tensor should represent predicted class or class id is required to be integer of shape (-1, 1).
-          type: string
-          default: 'classes'
     TaskStatePending:
       type: object
       required:
