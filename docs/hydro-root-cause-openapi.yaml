@@ -71,12 +71,6 @@ paths:
           required: true
           schema:
             type: string
-        - name: explained_output_field_name
-          in: query
-          description: Name of the tensor from model signature which will be used as an explanation target during explanation calculation process. Tensor should represent predicted class or class id is required to be integer of shape (-1, 1).
-          required: True
-          schema:
-            type: string
         - name: method
           in: query
           required: true
@@ -85,21 +79,23 @@ paths:
             enum: [anchor, rise]
       responses:
         '200':
-          description: An explanation status
+          description: Explanation statuses for every model output
           content:
             application/json:
               schema:
                 type: object
-                properties:
-                  state:
-                    type: string
-                    enum: [NOT_CALLED, NOT_SUPPORTED, PENDING, STARTED, SUCCESS, FAILED]
-                  description:
-                    type: string
-                  result:
-                    oneOf:
-                      - $ref: "#/components/schemas/AnchorResponse"
-                      - $ref: "#/components/schemas/RiseResponse"
+                additionalProperties:
+                  type: object
+                  properties:
+                    state:
+                      type: string
+                      enum: [NOT_CALLED, NOT_SUPPORTED, PENDING, STARTED, SUCCESS, FAILED]
+                    description:
+                      type: string
+                    result:
+                      oneOf:
+                        - $ref: "#/components/schemas/AnchorResponse"
+                        - $ref: "#/components/schemas/RiseResponse"
     post:
       summary: Create a request for explanation
       operationId: requestExplanation

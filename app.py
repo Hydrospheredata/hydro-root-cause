@@ -10,6 +10,7 @@ from bson import objectid
 from celery import Celery
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
+from hydrosdk import ModelVersion
 from hydrosdk.cluster import Cluster
 from jsonschema import Draft7Validator
 from pymongo import MongoClient
@@ -118,38 +119,45 @@ def get_celery_task_status():
 
 @app.route(ROUTES_PREFIX + '/explanation', methods=["GET"])
 def get_explanation_status():
-    possible_args = {"model_version_id", "explained_request_id", "method", "explained_output_field_name"}
+    possible_args = {"model_version_id", "explained_request_id", "method"}
+    response = {}
     if set(request.args.keys()) != possible_args:
         return jsonify({"message": f"Expected args: {possible_args}. Provided args: {set(request.args.keys())}"}), 400
 
     method = request.args['method']
     request_id = request.args['explained_request_id']
     model_version_id = int(request.args['model_version_id'])
-    explained_output_field_name = request.args['explained_output_field_name']
-
     try:
-        model_supported, support_description = utils.check_model_version_support(method, model_version_id,
-                                                                                 explained_output_field_name)
-        if not model_supported:
-            return jsonify({"state": ExplanationState.NOT_SUPPORTED.name,
-                            "description": support_description})
+        model_version = ModelVersion.find_by_id(hs_cluster, model_version_id)
+        output_field_names = [t.name for t in model_version.contract.predict.outputs]
     except Exception as e:
-        logging.error(f"Failed during model support analysis. {e}")
-        return 500, f"Failed during model support analysis."
+        logging.error(f'Failed to connect to model. {e}')
+        return f"Failed to connect to model.", 500
 
-    # TODO check task state - if it is "FAILED", and state in mongodb is not - discard mongodb state and description, and return FAILED
-    explanation = db[method].find_one({"model_version_id": model_version_id, "explained_request_id": request_id,
-                                       "explained_output_field_name": explained_output_field_name})
-
-    if explanation:
-        response = {"state": explanation['state'],
-                    "description": explanation['description']}
-        if 'result' in explanation:
-            response['result'] = explanation['result']
-        return jsonify(response)
-    else:
-        return jsonify({"state": ExplanationState.NOT_CALLED.name,
-                        "description": "Explanation was never requested"})
+    for output_field in output_field_names:
+        try:
+            model_supported, support_description = utils.check_model_version_support(method, model_version_id,
+                                                                                     output_field)
+            if not model_supported:
+                response[output_field] = {"state": ExplanationState.NOT_SUPPORTED.name,
+                                          "description": support_description}
+                continue
+        except Exception as e:
+            logging.error(f"Failed during model support analysis. {e}")
+            return f"Failed during model support analysis.", 500
+        # TODO check task state - if it is "FAILED", and state in mongodb is not - discard mongodb state and description, and return FAILED
+        explanation = db[method].find_one({"model_version_id": model_version_id, "explained_request_id": request_id,
+                                           "explained_output_field_name": output_field})
+        if explanation:
+            response[output_field] = {"state": explanation['state'],
+                                      "description": explanation['description']}
+            if 'result' in explanation:
+                response[output_field]['result'] = explanation['result']
+        else:
+            response[output_field] = {"state": ExplanationState.NOT_CALLED.name,
+                                      "description": "Explanation was never requested"}
+    logging.info(response)
+    return jsonify(response)
 
 
 @app.route(ROUTES_PREFIX + "/explanation", methods=["POST"])
