@@ -128,8 +128,8 @@ def anchor_task(explanation_id: str):
 
         logger.info(
             f"{explanation_id} - finished loading training data in {timer() - started_downloading_data_time:.2f} seconds")
-
-        training_data = training_data.sample(job_config['training_subsample_size'])
+        training_data_subsample_size = min(len(training_data), job_config['training_subsample_size'])
+        training_data = training_data.sample(training_data_subsample_size)
         training_data = training_data[input_field_names]  # Reorder columns according to their order
     except Exception as e:
         log_error_state(f"Unable to load training data. {e}")
