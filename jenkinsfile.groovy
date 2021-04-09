@@ -155,7 +155,7 @@ def updateDockerCompose(String newVersion){
     sh script: "sed -i \"s/.*image:.*/    image: hydrosphere\\/${SERVICENAME}:$newVersion/g\" ${SERVICENAME}.service.template", label: "sed ${SERVICENAME} version"
     //Merge compose into 1 file
     composeMerge = "docker-compose"
-    composeService = sh label: "Get all template", returnStdout: true, script: "ls *.compose"
+    composeService = sh label: "Get all template", returnStdout: true, script: "ls *.template"
     list = composeService.split( "\\r?\\n" )
     for(l in list){
         composeMerge = composeMerge + " -f $l"
