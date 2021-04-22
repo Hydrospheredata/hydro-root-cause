@@ -14,8 +14,8 @@ You can test anchor and rise with `python tests/test_anchor_on_multiple_adult_mo
 If model signature is not supported, then there are no way to ask for explanation and explanation status will always be `NOT_SUPPORTED`
  
  Model signature is considered supported when it consists of numerical scalar fields only. It should also have output field with name
- specified in `config['explained_output_field_name']`. If there are no such tensor, model signature will be considered `NOT_SUPPORTED`.
- You can change this tensor by update config during runtime, and model status will be refreshed.
+ specified in `'explained_output_field_name'` request body. If there are no such tensor, model signature will be considered `NOT_SUPPORTED`. 
+
 
  Supported fields are:
  * of scalar shape

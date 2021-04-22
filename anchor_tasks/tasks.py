@@ -1,24 +1,26 @@
 import datetime
+import json
 import logging as logger
-from time import sleep
 from timeit import default_timer as timer
 from typing import Callable
 
-import hydro_serving_grpc as hs_grpc
 import numpy as np
 import pandas as pd
 import requests
+import sseclient
 from anchor2 import TabularExplainer
 from bson import objectid
 from hydrosdk.cluster import Cluster
 from hydrosdk.modelversion import ModelVersion
-from hydrosdk.servable import Servable
+from hydrosdk.servable import Servable, ServableStatus
+from hydrosdk.contract import ProfilingType
 from pymongo import MongoClient
 from pymongo.database import Database
 from s3fs.core import S3FileSystem
 
 import utils
-from app import celery, get_mongo_client, MONITORING_URL, ExplanationState, S3_ENDPOINT, HS_CLUSTER_ADDRESS, GRPC_ADDRESS
+from app import celery, get_mongo_client, MONITORING_URL, ExplanationState, S3_ENDPOINT, HS_CLUSTER_ADDRESS, \
+    GRPC_ADDRESS
 
 BEAM_SELECTOR_PARAMETER_NAMES = ("delta", 'tolerance', 'batch_size', 'beam_size', "anchor_pool_size")
 
@@ -76,6 +78,7 @@ def anchor_task(explanation_id: str):
 
     model_version_id = int(job_json['model_version_id'])
     explained_request_id = job_json['explained_request_id']
+    logger.info(job_json)
 
     try:
         job_config = utils.get_latest_config(db, "anchor", model_version_id)
@@ -88,13 +91,14 @@ def anchor_task(explanation_id: str):
         model_version = ModelVersion.find_by_id(hs_cluster, model_version_id)
         input_field_names = [t.name for t in model_version.contract.predict.inputs]
         output_field_names = [t.name for t in model_version.contract.predict.outputs]
-        logger.info(f"{explanation_id} - Feature names used for calculating explanation: {input_field_names}")
+        ordinal_features_idx = [idx for idx, inpt in enumerate(model_version.contract.predict.inputs) if ProfilingType(inpt.profile) == ProfilingType.ORDINAL]
+        logger.info(f"{explanation_id} - Feature names used for calculating explanation: {input_field_names}.")
     except Exception as e:
         log_error_state(f"Failed to connect to the model. {e}")
         return str(explanation_id)
 
     try:
-        explained_tensor_name = job_config['explained_output_field_name']
+        explained_tensor_name = job_json['explained_output_field_name']  # Fix here
         if explained_tensor_name not in output_field_names:
             raise ValueError(f"RootCause is configure to explain '{explained_tensor_name}' tensor. "
                              f"{model_version.name}v{model_version.version} have to return '{explained_tensor_name}' tensor.")
@@ -110,7 +114,8 @@ def anchor_task(explanation_id: str):
 
     try:
         logger.info(f"{explanation_id} - connecting to monitoring to get url to training data")
-        s3_training_data_path = requests.get(f"{MONITORING_URL}/training_data?modelVersionId={model_version_id}").json()[0]
+        s3_training_data_path = \
+        requests.get(f"{MONITORING_URL}/training_data?modelVersionId={model_version_id}").json()[0]
 
         logger.info(f"{explanation_id} - started fetching training data, url: {s3_training_data_path}")
         started_downloading_data_time = timer()
@@ -121,9 +126,10 @@ def anchor_task(explanation_id: str):
         else:
             training_data = pd.read_csv(s3_training_data_path)
 
-        logger.info(f"{explanation_id} - finished loading training data in {timer() - started_downloading_data_time:.2f} seconds")
-
-        training_data = training_data.sample(job_config['training_subsample_size'])
+        logger.info(
+            f"{explanation_id} - finished loading training data in {timer() - started_downloading_data_time:.2f} seconds")
+        training_data_subsample_size = min(len(training_data), job_config['training_subsample_size'])
+        training_data = training_data.sample(training_data_subsample_size)
         training_data = training_data[input_field_names]  # Reorder columns according to their order
     except Exception as e:
         log_error_state(f"Unable to load training data. {e}")
@@ -131,22 +137,12 @@ def anchor_task(explanation_id: str):
 
     try:
 
-        manager_stub = hs_grpc.manager.ManagerServiceStub(channel=hs_cluster.channel)
-        deploy_request = hs_grpc.manager.DeployServableRequest(version_id=model_version_id,
-                                                               metadata={"created_by": "rootcause"})
+        tmp_servable: Servable = Servable.create(hs_cluster, model_name=model_version.name, version=model_version.version,
+                                       metadata={"created_by": "rootcause"})
 
-        for servable in manager_stub.DeployServable(deploy_request):
-            logger.info(f"{servable.name} is {servable.status}")
+        utils.servable_lock_till_serving(hs_cluster, tmp_servable.name)
+        tmp_servable: Servable = Servable.find_by_name(hs_cluster, tmp_servable.name)
 
-        if servable.status != 3:
-            raise ValueError(f"Invalid servable state came from GRPC stream - {servable.status}")
-
-        sleep(5)
-        tmp_servable = Servable.find(hs_cluster, servable_name=servable.name)
-        logger.info(f'{tmp_servable.name} was deployed. Sleeping for 15 sec')
-        sleep(15)
-        # if tmp_servable.status is not ServableStatus.SERVING:
-        #     raise ValueError(f"Invalid servable state (fetched by HTTP)- {servable_status}")
 
     except Exception as e:
         log_error_state(f"Unable to create a new servable. {e}")
@@ -155,7 +151,7 @@ def anchor_task(explanation_id: str):
     try:
         anchor_explainer = TabularExplainer()
         anchor_explainer.fit(data=training_data,
-                             ordinal_features_idx=job_config['ordinal_features_idx'],
+                             ordinal_features_idx=ordinal_features_idx,
                              label_decoders=job_config['label_decoders'],
                              oh_encoded_categories=job_config['oh_encoded_categories'])
 
@@ -196,3 +192,5 @@ def anchor_task(explanation_id: str):
         return str(explanation_id)
 
     return str(explanation_id)
+
+
