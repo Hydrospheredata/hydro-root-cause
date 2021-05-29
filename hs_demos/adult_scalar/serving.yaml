@@ -60,7 +60,7 @@ contract:
       type: int64
       profile: numerical
   outputs:
-    prediction:
+    classes:
       shape: scalar
       type: int64
       profile: numerical

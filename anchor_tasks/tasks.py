@@ -142,7 +142,7 @@ def anchor_task(explanation_id: str):
             raise ValueError(f"Invalid servable state came from GRPC stream - {servable.status}")
 
         sleep(5)
-        tmp_servable = Servable.find(hs_cluster, servable_name=servable.name)
+        tmp_servable = Servable.find_by_name(hs_cluster, servable_name=servable.name)
         logger.info(f'{tmp_servable.name} was deployed. Sleeping for 15 sec')
         sleep(15)
         # if tmp_servable.status is not ServableStatus.SERVING:

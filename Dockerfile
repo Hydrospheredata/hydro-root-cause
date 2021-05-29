@@ -1,7 +1,6 @@
 FROM python:3.7.4-slim-stretch
 
 RUN apt-get update && \
-    apt-get upgrade -y && \
     apt-get install -y build-essential \
                        python3-pip \
                        python3-numpy \
