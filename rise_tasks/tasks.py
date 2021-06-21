@@ -10,8 +10,8 @@ from hydrosdk.servable import Servable
 from pymongo import MongoClient
 from pymongo.database import Database
 
-import utils
-from app import celery, hs_cluster, get_mongo_client, MONITORING_URL
+from rootcause import utils
+from rootcause.app import celery, hs_cluster, get_mongo_client, MONITORING_URL
 from rise.rise import RiseImageExplainer
 
 

@@ -17,8 +17,8 @@ from pymongo import MongoClient
 from pymongo.database import Database
 from s3fs.core import S3FileSystem
 
-import utils
-from app import celery, get_mongo_client, MONITORING_URL, ExplanationState, S3_ENDPOINT, HS_CLUSTER_ADDRESS, GRPC_ADDRESS
+from rootcause import utils
+from rootcause.app import celery, get_mongo_client, MONITORING_URL, ExplanationState, S3_ENDPOINT, HS_CLUSTER_ADDRESS, GRPC_ADDRESS
 
 BEAM_SELECTOR_PARAMETER_NAMES = ("delta", 'tolerance', 'batch_size', 'beam_size', "anchor_pool_size")
 
