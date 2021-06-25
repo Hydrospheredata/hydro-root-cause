@@ -18,6 +18,8 @@ WORKDIR /app
 COPY poetry.lock pyproject.toml ./
 COPY anchor2/ ./anchor2
 COPY rise/ ./rise
+COPY anchor_tasks ./anchor_tasks
+COPY rise_tasks ./rise_tasks
 RUN ~/.poetry/bin/poetry config virtualenvs.create false
 RUN ~/.poetry/bin/poetry install -n
 COPY . .
