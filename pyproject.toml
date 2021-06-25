@@ -3,6 +3,10 @@ name = "rootcause"
 version = "0.1.0"
 description = ""
 authors = ["Hydrospheredata"]
+packages = [
+    {include = "anchor_tasks"},
+    {include = "rise_tasks"}
+]
 
 [tool.poetry.dependencies]
 python = "^3.7"

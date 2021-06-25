@@ -1,8 +1,8 @@
 from typing import Tuple, Dict
 
 import requests
-from hydro_serving_grpc import DT_INT64, DT_INT32, DT_INT16, DT_INT8
-from hydro_serving_grpc.serving.contract import ModelSignature
+from hydro_serving_grpc.serving.contract.types_pb2 import DT_INT64, DT_INT32, DT_INT16, DT_INT8
+from hydro_serving_grpc.serving.contract.signature_pb2 import ModelSignature
 from hydrosdk.modelversion import ModelVersion
 
 from rootcause.app import hs_cluster, MONITORING_URL
