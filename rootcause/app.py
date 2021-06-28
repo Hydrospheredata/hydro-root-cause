@@ -79,7 +79,7 @@ celery.autodiscover_tasks(["rise_tasks", "anchor_tasks"], force=True)
 celery.conf.update(app.config)
 celery.conf.update({"CELERY_DISABLE_RATE_LIMITS": True})
 
-import utils
+from rootcause import utils
 import anchor_tasks
 import rise_tasks
 
