@@ -6,7 +6,7 @@ on: pull_request
 #   DOCKERHUB_PASSWORD
  
 env:
-  HYDRO_SERVING_REPO: Hydrospheredata/hydro-serving
+  HYDRO_SERVING_REPO: ${{ github.repository_owner }}/hydro-serving
   IMAGE: hydro-root-cause # name of the built image
   REGISTRY: hydrosphere
 
@@ -35,6 +35,12 @@ jobs:
       # Here a lot of tests
       - name: tests
         run: echo SUCCESS
+
+      - name: Run Snyk to check for vulnerabilities
+        uses: snyk/actions/python@master
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
 
   Build_image:
     runs-on: ubuntu-latest

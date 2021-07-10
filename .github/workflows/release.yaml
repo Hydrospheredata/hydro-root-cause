@@ -1,4 +1,4 @@
-name: release
+name: Release
 on:
   push:
     branches:
@@ -33,12 +33,31 @@ on:
 #   HYDRO_SERVING_TOKEN - github token with write access to hydro-serving repo
 
 env:
-  HYDRO_SERVING_REPO: Hydrospheredata/hydro-serving
+  HYDRO_SERVING_REPO: ${{ github.repository_owner }}/hydro-serving
   IMAGE: hydro-root-cause # name of the built image  
   REGISTRY: hydrosphere
   
 jobs:
+  Verify_version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Get latest tag
+        id: get-latest-tag
+        uses: actions-ecosystem/action-get-latest-tag@v1
+
+    outputs:
+      latest_version: ${{ steps.get-latest-tag.outputs.tag }}
+
   Build_and_publish:
+    needs: Verify_version
+    if: >
+      needs.Verify_version.outputs.latest_version != github.event.inputs.version && (
+      github.event_name == 'workflow_dispatch' || 
+      github.event_name == 'push')
+
     runs-on: ubuntu-latest
     steps:
     # Install prerequisites
@@ -107,6 +126,12 @@ jobs:
       if: github.event_name != 'workflow_dispatch'
       run: echo VERSION=${{ github.sha }} >> $GITHUB_ENV
 
+    - name: Run Snyk to check for vulnerabilities
+      uses: snyk/actions/python@master
+      continue-on-error: true
+      env:
+        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
       # Build and push image
     - name: Build and push
       id: docker_build
@@ -140,18 +165,16 @@ jobs:
         git config --local user.name "github-actions[bot]"
         git commit -m "Releasing ${{ env.IMAGE }}:${{ env.VERSION }}" -a
         git push
-        
-    - name: Tag commit
-      if: github.event_name == 'workflow_dispatch'
-      run: "git tag ${{ env.VERSION }}"
-      
-    - name: Push tag
-      if: github.event_name == 'workflow_dispatch'
-      run: "git push --tags"
-   
-      # Set job info
-    - uses: martialonline/workflow-status@v2
-      id: check
-    - run: |
-        echo "release status: ${{  steps.check.outputs.status  }}"
-      #TODO add more info about build
+
+    - name: Reports
+      id: generate-output
+      run: echo "::set-output name=tag-output::${{ env.VERSION }}"
+
+    - name: Create github release
+      uses: meeDamian/github-release@2.0
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: ${{ env.VERSION }}
+
+    outputs:
+      tag: ${{ steps.generate-output.outputs.tag-output }}
