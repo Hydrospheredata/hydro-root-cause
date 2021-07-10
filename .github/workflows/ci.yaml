@@ -36,12 +36,6 @@ jobs:
       - name: tests
         run: echo SUCCESS
 
-      - name: Run Snyk to check for vulnerabilities
-        uses: snyk/actions/python@master
-        continue-on-error: true
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-
   Build_image:
     runs-on: ubuntu-latest
     steps:
