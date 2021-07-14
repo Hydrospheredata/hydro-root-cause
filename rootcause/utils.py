@@ -1,3 +1,4 @@
+import logging
 from typing import Tuple, Dict
 
 import requests
@@ -49,7 +50,7 @@ def contract_is_supported_by_rise(signature: ModelSignature, training_data_avail
     return True, "Everything is fine"
 
 
-def check_model_version_support(db, method, model_version_id) -> Tuple[bool, str]:
+def check_model_version_support(db, method, model_version_id, output_field) -> Tuple[bool, str]:
     """
     Checks whether model version is supported by particular method. Requires access to latest config to see which fields are being explained
     :param db:
@@ -69,12 +70,12 @@ def check_model_version_support(db, method, model_version_id) -> Tuple[bool, str
         if model_version.is_external:
             return False, f"External Models are not supported"
 
-        signature = model_version.contract.predict
-        explained_output_field_name = model_config['explained_output_field_name']
+        signature = model_version.signature
+        explained_output_field_name = output_field
 
         if explained_output_field_name in [tensor.name for tensor in signature.outputs]:
             classes_field = next(filter(lambda t: t.name == explained_output_field_name, signature.outputs))
-            classes_field_shape = tuple(map(lambda dim: dim.size, classes_field.shape.dim))
+            classes_field_shape = tuple(classes_field.shape.dims)
             if classes_field_shape != tuple():
                 return False, f"Explained tensor '{explained_output_field_name}' is of unsupported shape - {classes_field_shape}." \
                               f" You can change explained tensor by calling config"
@@ -82,7 +83,7 @@ def check_model_version_support(db, method, model_version_id) -> Tuple[bool, str
             return False, f"Explained tensor is '{explained_output_field_name}' and it is not present in signature." \
                           f" You can change explained tensor by calling config"
 
-        input_tensor_shapes = [tuple(map(lambda dim: dim.size, input_tensor.shape.dim)) for input_tensor in signature.inputs]
+        input_tensor_shapes = [tuple(input_tensor.shape.dims) for input_tensor in signature.inputs]
         if not all([shape == tuple() for shape in input_tensor_shapes]):
             return False, "This signature has invalid type, only signatures with all scalar fields are supported right now"
 
@@ -113,7 +114,6 @@ def get_latest_config(db, method, model_version_id) -> Dict:
     else:
         latest_config = config_doc[0]['config']
     return latest_config
-
 
 def get_default_config(method):
     """

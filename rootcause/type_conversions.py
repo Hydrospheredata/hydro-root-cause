@@ -1,6 +1,6 @@
 import numpy as np
 
-from hydro_serving_grpc import DT_STRING, DT_BOOL, \
+from hydro_serving_grpc.serving.contract.types_pb2 import DT_STRING, DT_BOOL, \
     DT_HALF, DT_FLOAT, DT_DOUBLE, DT_INT8, DT_INT16, \
     DT_INT32, DT_INT64, DT_UINT8, DT_UINT16, DT_UINT32, \
     DT_UINT64, DT_COMPLEX64, DT_COMPLEX128

@@ -118,16 +118,17 @@ def get_celery_task_status():
 
 @app.route(ROUTES_PREFIX + '/explanation', methods=["GET"])
 def get_explanation_status():
-    possible_args = {"model_version_id", "explained_request_id", "method"}
+    possible_args = {"model_version_id", "explained_request_id", "method", "output_field"}
     if set(request.args.keys()) != possible_args:
         return jsonify({"message": f"Expected args: {possible_args}. Provided args: {set(request.args.keys())}"}), 400
 
     method = request.args['method']
     request_id = request.args['explained_request_id']
     model_version_id = int(request.args['model_version_id'])
+    output_field = request.args['output_field']
 
     try:
-        model_supported, support_description = utils.check_model_version_support(db, method, model_version_id)
+        model_supported, support_description = utils.check_model_version_support(db, method, model_version_id, output_field)
         if not model_supported:
             return jsonify({"state": ExplanationState.NOT_SUPPORTED.name,
                             "description": support_description})
@@ -136,7 +137,7 @@ def get_explanation_status():
         return 500, f"Failed during model support analysis."
 
     # TODO check task state - if it is "FAILED", and state in mongodb is not - discard mongodb state and description, and return FAILED
-    explanation = db[method].find_one({"model_version_id": model_version_id, "explained_request_id": request_id})
+    explanation = db[method].find_one({"model_version_id": model_version_id, "explained_request_id": request_id, "output_field": output_field})
     if explanation:
         response = {"state": explanation['state'],
                     "description": explanation['description']}
@@ -156,12 +157,14 @@ def calculate_new_explanation():
         error_message = "\n".join([e.message for e in validator.iter_errors(inp_json)])
         return jsonify({"message": error_message}), 400
 
+
     model_version_id = inp_json['model_version_id']
     explained_request_id = inp_json['explained_request_id']
     method = inp_json['method']
+    output_field = inp_json['output_field']
 
     try:
-        model_supported, support_description = utils.check_model_version_support(db, method, model_version_id)
+        model_supported, support_description = utils.check_model_version_support(db, method, model_version_id, output_field)
         if not model_supported:
             return jsonify({"state": ExplanationState.NOT_SUPPORTED.name,
                             "description": support_description})
@@ -176,14 +179,15 @@ def calculate_new_explanation():
     else:
         return 400, f"Invalid method: '{method}'"
 
-    logging.info(f"Received request to explain request={explained_request_id} of model {model_version_id} with {method}")
+    logging.info(f"Received request to explain request={explained_request_id} for output field {output_field} of model {model_version_id} with {method}")
 
     # Check for existing explanations requests for this method, model and request.
     explanation = db[method].find_one({"model_version_id": model_version_id,
-                                       "explained_request_id": explained_request_id},
+                                       "explained_request_id": explained_request_id,
+                                       "output_field": output_field},
                                       sort=[("_id", pymongo.DESCENDING)])
     if explanation:
-        logging.info(f"Found existing request for {method} explanation for {model_version_id} - {explained_request_id}")
+        logging.info(f"Found existing request for {method} explanation for {model_version_id} with output field {output_field} - {explained_request_id}")
         response = {"state": explanation['state'],
                     "description": explanation['description']}
         if 'result' in explanation:
@@ -195,10 +199,11 @@ def calculate_new_explanation():
                                    'explained_request_id': explained_request_id,
                                    "state": ExplanationState.PENDING.name,
                                    "description": "Received explanation request",
-                                   'method': method}
+                                   'method': method,
+                                   'output_field': output_field}
 
     explanation_id = db[method].insert_one(explanation_job_description).inserted_id
-    logging.info(f"Stored request into mongodb for {method} explanation for {model_version_id} - {explained_request_id}")
+    logging.info(f"Stored request into mongodb for {method} explanation for {model_version_id} with output field {output_field} - {explained_request_id}")
 
     task_async_result = task.apply_async(args=(str(explanation_id),), queue='rootcause')
 
@@ -208,7 +213,6 @@ def calculate_new_explanation():
                                              "description": "Explanation is queued"}})
 
     return jsonify({}), 202
-
 
 @app.route(ROUTES_PREFIX + "/config", methods=['GET', 'PATCH'])
 def get_params():
