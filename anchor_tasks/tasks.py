@@ -4,9 +4,6 @@ from time import sleep
 from timeit import default_timer as timer
 from typing import Callable
 
-from hydro_serving_grpc.serving.manager.api_pb2_grpc import ManagerServiceStub
-from hydro_serving_grpc.serving.manager.api_pb2 import DeployServableRequest
-
 import numpy as np
 import pandas as pd
 import requests
