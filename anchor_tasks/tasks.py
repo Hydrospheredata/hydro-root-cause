@@ -4,7 +4,9 @@ from time import sleep
 from timeit import default_timer as timer
 from typing import Callable
 
-import hydro_serving_grpc as hs_grpc
+from hydro_serving_grpc.serving.manager.api_pb2_grpc import ManagerServiceStub
+from hydro_serving_grpc.serving.manager.api_pb2 import DeployServableRequest
+
 import numpy as np
 import pandas as pd
 import requests
@@ -76,6 +78,7 @@ def anchor_task(explanation_id: str):
 
     model_version_id = int(job_json['model_version_id'])
     explained_request_id = job_json['explained_request_id']
+    output_field = job_json['output_field']
 
     try:
         job_config = utils.get_latest_config(db, "anchor", model_version_id)
@@ -86,17 +89,17 @@ def anchor_task(explanation_id: str):
     try:
         hs_cluster = Cluster(HS_CLUSTER_ADDRESS, grpc_address=GRPC_ADDRESS)
         model_version = ModelVersion.find_by_id(hs_cluster, model_version_id)
-        input_field_names = [t.name for t in model_version.contract.predict.inputs]
-        output_field_names = [t.name for t in model_version.contract.predict.outputs]
+        input_field_names = [t.name for t in model_version.signature.inputs]
+        output_field_names = [t.name for t in model_version.signature.outputs]
         logger.info(f"{explanation_id} - Feature names used for calculating explanation: {input_field_names}")
     except Exception as e:
         log_error_state(f"Failed to connect to the model. {e}")
         return str(explanation_id)
 
     try:
-        explained_tensor_name = job_config['explained_output_field_name']
+        explained_tensor_name = output_field
         if explained_tensor_name not in output_field_names:
-            raise ValueError(f"RootCause is configure to explain '{explained_tensor_name}' tensor. "
+            raise ValueError(f"RootCause was requested to explain '{explained_tensor_name}' tensor. "
                              f"{model_version.name}v{model_version.version} have to return '{explained_tensor_name}' tensor.")
 
         explained_request: np.array = get_anchor_explained_instance(explained_request_id, input_field_names)
@@ -130,23 +133,11 @@ def anchor_task(explanation_id: str):
         return str(explanation_id)
 
     try:
+        mv = ModelVersion.find_by_id(cluster=hs_cluster, id=model_version_id)
+        tmp_servable = Servable.create(cluster=hs_cluster, model_name=mv.name, version=mv.version)
+        tmp_servable.lock_while_starting()
 
-        manager_stub = hs_grpc.manager.ManagerServiceStub(channel=hs_cluster.channel)
-        deploy_request = hs_grpc.manager.DeployServableRequest(version_id=model_version_id,
-                                                               metadata={"created_by": "rootcause"})
-
-        for servable in manager_stub.DeployServable(deploy_request):
-            logger.info(f"{servable.name} is {servable.status}")
-
-        if servable.status != 3:
-            raise ValueError(f"Invalid servable state came from GRPC stream - {servable.status}")
-
-        sleep(5)
-        tmp_servable = Servable.find_by_name(hs_cluster, servable_name=servable.name)
-        logger.info(f'{tmp_servable.name} was deployed. Sleeping for 15 sec')
-        sleep(15)
-        # if tmp_servable.status is not ServableStatus.SERVING:
-        #     raise ValueError(f"Invalid servable state (fetched by HTTP)- {servable_status}")
+        logger.info(f'{tmp_servable.name} was deployed.')
 
     except Exception as e:
         log_error_state(f"Unable to create a new servable. {e}")

@@ -40,7 +40,7 @@ def rise_task(self, explanation_id: str):
         job_config = utils.get_default_config("rise")
 
     model_version = ModelVersion.find_by_id(hs_cluster, model_version_id)
-    input_field_names = [t.name for t in model_version.contract.predict.inputs]
+    input_field_names = [t.name for t in model_version.signature.inputs]
 
     # TODO in future pass input parameter to be explained as config?
     input_image: np.ndarray = get_rise_explained_instance(request_id, input_field_names[0])
@@ -58,7 +58,7 @@ def rise_task(self, explanation_id: str):
     top_10_classes = explained_image_probas.argsort()[::-1][:10]
     top_10_probas = explained_image_probas[top_10_classes]
 
-    input_shape = tuple(map(lambda dim: dim.size, temp_servable_copy.model.contract.predict.inputs[0].shape.dim))
+    input_shape = tuple(temp_servable_copy.signature.predict.inputs[0].shape.dims)
     input_shape = input_shape[1:]  # Remove 0 dimension as batch dim, FIXME tech debt, support for single data point in future?
 
     if len(input_shape) == 2:
