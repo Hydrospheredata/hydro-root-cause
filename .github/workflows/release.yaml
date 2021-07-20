@@ -90,7 +90,7 @@ jobs:
         github.event.inputs.sdk_version == '' && github.event.inputs.release == 'local' ||
         github.event_name == 'push'
       run: |
-        SDK_VERSION=$(curl -Ls https://pypi.org/pypi/hydrosdk/json | jq -r '.releases | keys[-1]')
+        SDK_VERSION=$(curl -Ls https://pypi.org/pypi/hydrosdk/json | jq -r '.releases | keys[]' | sort -V | tail -n 1)
         echo $SDK_VERSION
         poetry add hydrosdk=$SDK_VERSION
           
