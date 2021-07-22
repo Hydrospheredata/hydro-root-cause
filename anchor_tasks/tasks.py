@@ -134,13 +134,14 @@ def anchor_task(explanation_id: str):
         tmp_servable = Servable.create(cluster=hs_cluster, model_name=mv.name, version=mv.version)
         tmp_servable.lock_while_starting()
 
-        logger.info(f'{tmp_servable.name} was deployed.')
+        logger.info(f'{tmp_servable.name} with status {tmp_servable.status} was deployed.')
 
     except Exception as e:
         log_error_state(f"Unable to create a new servable. {e}")
         return str(explanation_id)
 
     try:
+        sleep(10)
         anchor_explainer = TabularExplainer()
         anchor_explainer.fit(data=training_data,
                              ordinal_features_idx=job_config['ordinal_features_idx'],
