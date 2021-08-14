@@ -8,7 +8,7 @@ if [ -z "$1" ]; then
 fi
 
 if [ "$1" = 'service' ]; then
-    python rootcause/app.py
+    python -m rootcause.app
 elif [ "$1" = 'worker' ]; then
     celery -A rootcause.app.celery worker -l info -O fair -Q rootcause
 else

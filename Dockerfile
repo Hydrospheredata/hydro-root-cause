@@ -1,33 +1,59 @@
-FROM python:3.7.10-slim-stretch
+# syntax=docker/dockerfile:1
+FROM python:3.8-slim as python-base
+LABEL maintainer="support@hydrosphere.io"
 
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    POETRY_PATH=/opt/poetry \
+    VENV_PATH=/opt/venv \
+    POETRY_VERSION=1.1.6 
+
+ENV PATH="$POETRY_PATH/bin:$VENV_PATH/bin:$PATH"
+
+
+FROM python-base AS build
 RUN apt-get update && \
     apt-get install -y build-essential \
-                       libatlas-dev \
-                       libatlas3-base \
-                       git curl
+                       curl git && \
+    curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python - && \
+    mv /root/.poetry $POETRY_PATH && \
+    python -m venv $VENV_PATH && \
+    poetry config virtualenvs.create false && \
+    rm -rf /var/lib/apt/lists/*
 
-RUN  update-alternatives --set libblas.so.3 \
-    /usr/lib/atlas-base/atlas/libblas.so.3 && \
-    update-alternatives --set liblapack.so.3 \
-    /usr/lib/atlas-base/atlas/liblapack.so.3
+COPY poetry.lock pyproject.toml ./
+COPY anchor2 ./anchor2
+COPY anchor_tasks ./anchor_tasks
+COPY rise_tasks ./rise_tasks
+COPY rise ./rise
+RUN poetry install --no-interaction --no-ansi -vvv
 
-RUN curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python -
+ARG GIT_HEAD_COMMIT
+ARG GIT_CURRENT_BRANCH
+COPY . ./
+RUN if [ -z "$GIT_HEAD_COMMIT" ] ; then \
+    printf '{"name": "hydro-stat", "version":"%s", "gitHeadCommit":"%s","gitCurrentBranch":"%s", "pythonVersion":"%s"}\n' "$(cat version)" "$(git rev-parse HEAD)" "$(git rev-parse --abbrev-ref HEAD)" "$(python --version)" >> buildinfo.json ; else \
+    printf '{"name": "hydro-stat", "version":"%s", "gitHeadCommit":"%s","gitCurrentBranch":"%s", "pythonVersion":"%s"}\n' "$(cat version)" "$GIT_HEAD_COMMIT" "$GIT_CURRENT_BRANCH" "$(python --version)" >> buildinfo.json ; \
+    fi
+
+
+FROM python-base as runtime
+
+RUN useradd -u 42069 --create-home --shell /bin/bash app
+USER app
 
 WORKDIR /app
 
-COPY poetry.lock pyproject.toml ./
-COPY anchor2/ ./anchor2
-COPY rise/ ./rise
-COPY anchor_tasks ./anchor_tasks
-COPY rise_tasks ./rise_tasks
-RUN ~/.poetry/bin/poetry config virtualenvs.create false
-RUN ~/.poetry/bin/poetry install -n
-COPY . .
-
-RUN printf '{"version":"%s", "gitHeadCommit":"%s","gitCurrentBranch":"%s", "pythonVersion":"%s"}\n' "$(cat version)" "$(git rev-parse HEAD)" "$(git rev-parse --abbrev-ref HEAD)" "$(python --version)" >> buildinfo.json && \
-    rm -rf .git
-
+COPY --from=build $VENV_PATH $VENV_PATH
+COPY --from=build --chown=app:app start.sh logging_config.ini ./
+COPY --from=build --chown=app:app rootcause ./rootcause
+COPY --from=build --chown=app:app json_schemas ./json_schemas
+COPY --from=build --chown=app:app anchor2 ./anchor2
+COPY --from=build --chown=app:app anchor_tasks ./anchor_tasks
+COPY --from=build --chown=app:app rise ./rise
+COPY --from=build --chown=app:app rise_tasks ./rise_tasks
+COPY --from=build --chown=app:app buildinfo.json buildinfo.json
 
 EXPOSE 5000
 
-ENTRYPOINT ["bash", "/app/start.sh"]
+ENTRYPOINT ["bash", "start.sh"]
