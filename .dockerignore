@@ -1,8 +1,13 @@
 .ipynb_checkpoints
 .dockerignore
+.gitignore
 anchor
+docs
 examples
 hs_demos
 demos
 buildinfo.json
 venv
+jenkinsfile.disable.groovy
+Dockerfile*
+README.md
