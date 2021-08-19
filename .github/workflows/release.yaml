@@ -56,7 +56,7 @@ jobs:
   Build_and_publish:
     needs: Verify_version
     if: >
-      needs.Verify_version.outputs.latest_version != env.VERSION && (
+      needs.Verify_version.outputs.latest_version != ${{ env.VERSION }} && (
       github.event_name == 'workflow_dispatch' || 
       github.event_name == 'push')
 
@@ -89,7 +89,7 @@ jobs:
       # Update dependency
     - name: Bump sdk
       if: |
-        env.SDK_VERSION == '' && github.event.inputs.release == 'local' ||
+        ${{ env.SDK_VERSION }} == '' && github.event.inputs.release == 'local' ||
         github.event_name == 'push'
       run: |
         SDK_VERSION=$(curl -Ls https://pypi.org/pypi/hydrosdk/json | jq -r '.releases | keys[]' | sort -V | tail -n 1)
@@ -97,14 +97,14 @@ jobs:
       #  poetry add hydrosdk=$SDK_VERSION
           
     - name: Bump sdk to latest stable version
-      if: env.SDK_VERSION == '' && github.event.inputs.release == 'global'
+      if: ${{ env.SDK_VERSION }} == '' && github.event.inputs.release == 'global'
       run: |
         SDK_VERSION=$(curl -Ls https://pypi.org/pypi/hydrosdk/json | jq -r .info.version)
         echo $SDK_VERSION
         poetry add hydrosdk=$SDK_VERSION
           
     - name: Set manual sdk version
-      if: env.SDK_VERSION != ''
+      if: ${{ env.SDK_VERSION }} != ''
       run: poetry add hydrosdk=${{ env.SDK_VERSION }}
           
     - name: Install dependencies
@@ -112,11 +112,11 @@ jobs:
 
       # Bump service version
     - name: bump version
-      if: env.VERSION == '' && github.event_name == 'workflow_dispatch'
+      if: ${{ env.VERSION }} == '' && github.event_name == 'workflow_dispatch'
       run: poetry version ${{ github.event.inputs.bump }}
       
     - name: force bump version
-      if: env.VERSION != '' && github.event_name == 'workflow_dispatch'
+      if: ${{ env.VERSION }} != '' && github.event_name == 'workflow_dispatch'
       run: poetry version ${{ env.VERSION }}
 
       # Set variables
