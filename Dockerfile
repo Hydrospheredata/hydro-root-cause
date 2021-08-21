@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM python:3.8-slim as python-base
+FROM python:3.8.11-slim as python-base
 LABEL maintainer="support@hydrosphere.io"
 
 ENV PYTHONUNBUFFERED=1 \
