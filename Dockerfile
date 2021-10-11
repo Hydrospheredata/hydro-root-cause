@@ -10,6 +10,10 @@ ENV PYTHONUNBUFFERED=1 \
 
 ENV PATH="$POETRY_PATH/bin:$VENV_PATH/bin:$PATH"
 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libssl1.1>=1.1.1k-1+deb11u1 \
+    openssl>=1.1.1k-1+deb11u1 && \
+    rm -rf /var/lib/apt/lists/*
 
 FROM python-base AS build
 RUN apt-get update && apt-get install -y --no-install-recommends \
