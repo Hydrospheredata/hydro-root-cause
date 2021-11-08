@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "rootcause"
-version = "3.0.1"
+version = "3.0.2"
 description = ""
 authors = ["Hydrospheredata"]
 packages = [
@@ -17,7 +17,7 @@ pandas = "~=1.1.5"
 Flask = "1.0.2"
 requests = "^2.23.0"
 scikit-image = "^0.18.1"
-hydrosdk = "3.0.1"
+hydrosdk = "3.0.2"
 grpcio-tools = "1.16"
 pymongo = "3.8.0"
 celery = {version = "4.4.0rc3", extras = ["mongodb"]}
