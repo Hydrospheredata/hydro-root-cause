@@ -946,7 +946,7 @@ python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
 
 [[package]]
 name = "waitress"
-version = "1.3.1"
+version = "1.4.3"
 description = "Waitress WSGI server"
 category = "main"
 optional = false
@@ -954,7 +954,7 @@ python-versions = "*"
 
 [package.extras]
 docs = ["Sphinx (>=1.8.1)", "docutils", "pylons-sphinx-themes (>=1.0.9)"]
-testing = ["nose", "coverage"]
+testing = ["nose", "coverage (>=5.0)"]
 
 [[package]]
 name = "werkzeug"
@@ -982,7 +982,7 @@ testing = ["pytest (>=4.6)", "pytest-checkdocs (>=1.2.3)", "pytest-flake8", "pyt
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.7"
-content-hash = "fad950404ade0a46f6e3f00dedc08c287dcfa59fe6889bf1316356a3fee0d2a0"
+content-hash = "299de620b7056c1d44e89c1d78e5dd59bd809ffa1303211f792b310be971abd0"
 
 [metadata.files]
 amqp = [
@@ -1765,8 +1765,8 @@ vine = [
     {file = "vine-1.3.0.tar.gz", hash = "sha256:133ee6d7a9016f177ddeaf191c1f58421a1dcc6ee9a42c58b34bed40e1d2cd87"},
 ]
 waitress = [
-    {file = "waitress-1.3.1-py2.py3-none-any.whl", hash = "sha256:f103e557725b17ae3c62f9e6005cdd85103f8b68fa86cf7c764ba7adc38ca5a2"},
-    {file = "waitress-1.3.1.tar.gz", hash = "sha256:278e09d6849acc1365404bbf7d790d0423b159802e850c726e8cd0a126a2dac7"},
+    {file = "waitress-1.4.3-py2.py3-none-any.whl", hash = "sha256:77ff3f3226931a1d7d8624c5371de07c8e90c7e5d80c5cc660d72659aaf23f38"},
+    {file = "waitress-1.4.3.tar.gz", hash = "sha256:045b3efc3d97c93362173ab1dfc159b52cfa22b46c3334ffc805dbdbf0e4309e"},
 ]
 werkzeug = [
     {file = "Werkzeug-2.0.1-py3-none-any.whl", hash = "sha256:6c1ec500dcdba0baa27600f6a22f6333d8b662d22027ff9f6202e3367413caa8"},
